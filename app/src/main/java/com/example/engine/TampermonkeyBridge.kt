@@ -25,6 +25,9 @@ class TampermonkeyBridge(private val context: Context) {
     // Persistent storage for GM_setValue / GM_getValue
     private val prefs = context.getSharedPreferences("tampermonkey_storage", Context.MODE_PRIVATE)
 
+    // URL change listener for SPA (e.g. YouTube, Twitter, Reddit)
+    var onUrlChangeListener: ((url: String, title: String) -> Unit)? = null
+
     // Live logs flow
     private val _logs = MutableStateFlow<List<ScriptLogEntry>>(emptyList())
     val logs: StateFlow<List<ScriptLogEntry>> = _logs.asStateFlow()
@@ -81,6 +84,18 @@ class TampermonkeyBridge(private val context: Context) {
     }
 
     @JavascriptInterface
+    fun onSpaUrlChanged(url: String, title: String) {
+        if (url.isBlank() || url.startsWith("about:")) return
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            try {
+                onUrlChangeListener?.invoke(url, title)
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
+    }
+
+    @JavascriptInterface
     fun processBlobDownload(base64Data: String, mimeType: String, fileName: String) {
         android.os.Handler(android.os.Looper.getMainLooper()).post {
             try {
@@ -88,7 +103,11 @@ class TampermonkeyBridge(private val context: Context) {
                 val decodedBytes = android.util.Base64.decode(pureBase64Encoded, android.util.Base64.DEFAULT)
 
                 val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
-                var file = java.io.File(downloadsDir, fileName.ifEmpty { "downloaded_blob" })
+                if (!downloadsDir.exists()) {
+                    downloadsDir.mkdirs()
+                }
+                val safeFileName = fileName.ifEmpty { "downloaded_blob" }.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+                var file = java.io.File(downloadsDir, safeFileName)
                 
                 if (file.exists()) {
                     val nameWithoutExt = file.nameWithoutExtension

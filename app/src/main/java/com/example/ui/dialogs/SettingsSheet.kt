@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.Cookie
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DesktopWindows
@@ -79,7 +78,6 @@ fun SettingsSheet(
     onToggleDevTools: () -> Unit = {},
     onToggleH264ify: () -> Unit = {},
     onOpenDownloads: () -> Unit = {},
-    onOpenCookieManager: () -> Unit = {},
     onOpenAdBlock: () -> Unit = {},
     onOpenTranslate: () -> Unit = {},
     onSelectSearchEngine: (SearchEngine) -> Unit,
@@ -352,40 +350,6 @@ fun SettingsSheet(
                                     )
                                 }
                                 Text("Buka >", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
-                            }
-
-                            // Cookie Manager entry
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        onDismiss()
-                                        onOpenCookieManager()
-                                    }
-                                    .padding(vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Cookie,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.secondary,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Text(
-                                        text = "Inspeksi & Kelola Cookie",
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        fontSize = 13.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                Text("Kelola >", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                             }
 
                             // AdBlock & Privacy Protection entry

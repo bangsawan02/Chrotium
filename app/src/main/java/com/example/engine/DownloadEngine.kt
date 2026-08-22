@@ -4,7 +4,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.webkit.CookieManager
@@ -17,9 +16,10 @@ import com.example.data.model.DownloadItem
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
 import java.io.File
-import java.io.RandomAccessFile
+import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLDecoder
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.roundToInt
 
@@ -49,15 +49,33 @@ class DownloadEngine(
         }
     }
 
+    private fun getDownloadsDirectory(): File {
+        val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        return dir
+    }
+
+    private fun sanitizeFileName(rawName: String): String {
+        var clean = rawName.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim()
+        clean = clean.replace(Regex("^\\.+"), "")
+        if (clean.isBlank()) {
+            clean = "download_${System.currentTimeMillis()}"
+        }
+        return clean
+    }
+
     private fun getUniqueFile(fileName: String): File {
-        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        var file = File(downloadsDir, fileName)
+        val downloadsDir = getDownloadsDirectory()
+        val safeName = sanitizeFileName(fileName)
+        var file = File(downloadsDir, safeName)
         if (!file.exists()) return file
 
         val nameWithoutExt = file.nameWithoutExtension
         val ext = file.extension
         val extSuffix = if (ext.isNotEmpty()) ".$ext" else ""
-        
+
         var counter = 1
         while (file.exists()) {
             file = File(downloadsDir, "$nameWithoutExt ($counter)$extSuffix")
@@ -66,8 +84,26 @@ class DownloadEngine(
         return file
     }
 
+    private fun parseContentDispositionFilename(contentDisposition: String?): String? {
+        if (contentDisposition.isNullOrBlank()) return null
+        return try {
+            // RFC 5987 / 6266: filename*=UTF-8''encoded_name.ext
+            val rfcMatch = Regex("""filename\*\s*=\s*(?:UTF-8|utf-8)''([^;]+)""", RegexOption.IGNORE_CASE).find(contentDisposition)
+            if (rfcMatch != null) {
+                val encoded = rfcMatch.groupValues[1].trim('"', '\'')
+                URLDecoder.decode(encoded, "UTF-8")
+            } else {
+                val stdMatch = Regex("""filename\s*=\s*"([^"]+)"""", RegexOption.IGNORE_CASE).find(contentDisposition)
+                    ?: Regex("""filename\s*=\s*([^;\s]+)""", RegexOption.IGNORE_CASE).find(contentDisposition)
+                stdMatch?.groupValues?.get(1)?.trim('"', '\'')
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     /**
-     * Memulai pengunduhan file tingkat lanjut secara paralel dan multi-thread
+     * Memulai pengunduhan file dengan penanganan multi-redirect cerdas (mendukung GitHub, S3 CDN, Google Drive).
      */
     fun startDownload(
         url: String,
@@ -81,10 +117,11 @@ class DownloadEngine(
         }
 
         scope.launch {
-            val guessedFileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
-            val finalFile = getUniqueFile(guessedFileName)
-            val safeMimeType = mimeType ?: getMimeTypeFromUrl(url) ?: "application/octet-stream"
-            val downloadId = System.currentTimeMillis() // ID unduhan kustom unik
+            val initialFilename = parseContentDispositionFilename(contentDisposition)
+                ?: URLUtil.guessFileName(url, contentDisposition, mimeType)
+            var finalFile = getUniqueFile(initialFilename)
+            var safeMimeType = mimeType ?: getMimeTypeFromUrl(url) ?: "application/octet-stream"
+            val downloadId = System.currentTimeMillis()
 
             withContext(Dispatchers.Main) {
                 Toast.makeText(context, "Memulai unduhan: ${finalFile.name}", Toast.LENGTH_SHORT).show()
@@ -116,69 +153,91 @@ class DownloadEngine(
 
             notificationManager.notify(downloadId.toInt(), notificationBuilder.build())
 
+            var activeConnection: HttpURLConnection? = null
+
             try {
-                // Mendapatkan informasi file header (ukuran & dukungan range)
-                var connection: HttpURLConnection? = null
-                var finalUrl = url
+                var currentUrl = url
                 var redirectCount = 0
-                var contentLength = 0L
-                var acceptRanges: String? = null
-                
+                val initialHost = try { URL(url).host } catch (e: Exception) { "" }
+
                 while (redirectCount < 10) {
-                    connection = URL(finalUrl).openConnection() as HttpURLConnection
-                    connection.instanceFollowRedirects = false
-                    connection.requestMethod = "GET"
-                    
-                    val cookies = CookieManager.getInstance().getCookie(finalUrl)
-                    if (!cookies.isNullOrBlank()) {
-                        connection.setRequestProperty("Cookie", cookies)
-                    }
+                    val targetUrl = URL(currentUrl)
+                    val conn = targetUrl.openConnection() as HttpURLConnection
+                    activeConnection = conn
+                    conn.instanceFollowRedirects = false
+                    conn.requestMethod = "GET"
+                    conn.connectTimeout = 20000
+                    conn.readTimeout = 25000
+
                     if (!userAgent.isNullOrBlank()) {
-                        connection.setRequestProperty("User-Agent", userAgent)
+                        conn.setRequestProperty("User-Agent", userAgent)
                     }
-                    connection.setRequestProperty("Referer", url)
-                    connection.connectTimeout = 15000
-                    connection.readTimeout = 15000
-                    
-                    val responseCode = connection.responseCode
-                    if (responseCode == HttpURLConnection.HTTP_MOVED_PERM ||
-                        responseCode == HttpURLConnection.HTTP_MOVED_TEMP ||
-                        responseCode == HttpURLConnection.HTTP_SEE_OTHER ||
-                        responseCode == 307 || responseCode == 308) {
-                        val location = connection.getHeaderField("Location")
-                        connection.disconnect()
-                        if (location != null) {
-                            finalUrl = location
-                            redirectCount++
-                            continue
-                        } else {
-                            throw Exception("Redirect tanpa location")
+                    conn.setRequestProperty("Accept", "*/*")
+
+                    // Hanya kirim cookie dan referer jika domain sama, hindari error S3 presigned URL di GitHub releases
+                    val currentHost = targetUrl.host
+                    if (currentHost.equals(initialHost, ignoreCase = true) || !currentHost.contains("githubusercontent.com")) {
+                        val cookies = CookieManager.getInstance().getCookie(currentUrl)
+                        if (!cookies.isNullOrBlank()) {
+                            conn.setRequestProperty("Cookie", cookies)
                         }
-                    } else if (responseCode in 200..299) {
-                        contentLength = connection.contentLengthLong
-                        acceptRanges = connection.getHeaderField("Accept-Ranges")
-                        connection.disconnect()
+                        if (redirectCount == 0) {
+                            conn.setRequestProperty("Referer", url)
+                        }
+                    }
+
+                    conn.connect()
+                    val responseCode = conn.responseCode
+
+                    if (responseCode in 300..399) {
+                        val location = conn.getHeaderField("Location")
+                        conn.disconnect()
+                        if (location.isNullOrBlank()) {
+                            throw Exception("Server melakukan redirect tanpa lokasi tujuan")
+                        }
+                        currentUrl = URL(targetUrl, location).toString()
+                        redirectCount++
+                        continue
+                    }
+
+                    if (responseCode in 200..299) {
+                        // Periksa apakah server memberikan nama file lebih spesifik di Content-Disposition
+                        val headerDisposition = conn.getHeaderField("Content-Disposition")
+                        val headerMime = conn.contentType?.substringBefore(";")?.trim()
+                        if (!headerMime.isNullOrBlank()) {
+                            safeMimeType = headerMime
+                        }
+
+                        val refinedName = parseContentDispositionFilename(headerDisposition)
+                        if (!refinedName.isNullOrBlank() && refinedName != initialFilename) {
+                            val newFile = getUniqueFile(refinedName)
+                            finalFile = newFile
+                            // Perbarui nama di database
+                            database.downloadDao().updateDownloadProgress(
+                                downloadId = downloadId,
+                                status = 0,
+                                downloadedBytes = 0,
+                                totalBytes = 0
+                            )
+                        }
                         break
                     } else {
+                        conn.disconnect()
                         throw Exception("Server merespons dengan kode: $responseCode")
                     }
                 }
 
-                val supportsRange = acceptRanges != null && acceptRanges.contains("bytes", ignoreCase = true)
-                
-                val totalBytes = if (contentLength > 0) contentLength else 0L
-                // Hanya gunakan unduhan paralel jika server mendukung range request dan ukuran file > 512KB
-                val isParallelSupported = supportsRange && totalBytes > 1024 * 512
-
+                val conn = activeConnection ?: throw Exception("Gagal membuat koneksi unduhan")
+                val totalBytes = conn.contentLengthLong.coerceAtLeast(0L)
                 val totalDownloaded = AtomicLong(0L)
                 var lastUpdateMillis = System.currentTimeMillis()
 
                 fun updateProgress(downloaded: Long) {
                     val now = System.currentTimeMillis()
-                    if (now - lastUpdateMillis >= 500 || downloaded == totalBytes) {
+                    if (now - lastUpdateMillis >= 500 || (totalBytes > 0 && downloaded >= totalBytes)) {
                         lastUpdateMillis = now
                         val progressPercent = if (totalBytes > 0) {
-                            ((downloaded.toDouble() / totalBytes) * 100).roundToInt()
+                            ((downloaded.toDouble() / totalBytes) * 100).roundToInt().coerceIn(0, 100)
                         } else {
                             0
                         }
@@ -193,127 +252,59 @@ class DownloadEngine(
                             )
                         }
 
-                        // Update notifikasi sistem
+                        // Update notifikasi
                         if (totalBytes > 0) {
                             notificationBuilder
-                                .setContentText("$progressPercent% selesai (${formatSize(downloaded)} / ${formatSize(totalBytes)})")
+                                .setContentTitle("Mengunduh ${finalFile.name}")
+                                .setContentText("$progressPercent% • ${formatSize(downloaded)} / ${formatSize(totalBytes)}")
                                 .setProgress(100, progressPercent, false)
                         } else {
                             notificationBuilder
-                                .setContentText("Mengunduh... (${formatSize(downloaded)})")
+                                .setContentTitle("Mengunduh ${finalFile.name}")
+                                .setContentText(formatSize(downloaded))
                                 .setProgress(0, 0, true)
                         }
                         notificationManager.notify(downloadId.toInt(), notificationBuilder.build())
                     }
                 }
 
-                if (isParallelSupported) {
-                    // Unduhan paralel multi-thread (4 segmen/utas)
-                    val numThreads = 4
-                    val chunkSize = totalBytes / numThreads
-
-                    // Alokasikan ukuran file tujuan terlebih dahulu agar mulus saat penulisan offset paralel
-                    RandomAccessFile(finalFile, "rw").use { raf ->
-                        raf.setLength(totalBytes)
-                    }
-
-                    coroutineScope {
-                        val deferreds = (0 until numThreads).map { i ->
-                            val startByte = i * chunkSize
-                            val endByte = if (i == numThreads - 1) totalBytes - 1 else (i + 1) * chunkSize - 1
-
-                            async(Dispatchers.IO) {
-                                var chunkConn: HttpURLConnection? = null
-                                try {
-                                    chunkConn = URL(finalUrl).openConnection() as HttpURLConnection
-                                    chunkConn.setRequestProperty("Range", "bytes=$startByte-$endByte")
-                                    val chunkCookies = CookieManager.getInstance().getCookie(finalUrl)
-                                    if (!chunkCookies.isNullOrBlank()) {
-                                        chunkConn.setRequestProperty("Cookie", chunkCookies)
-                                    }
-                                    if (!userAgent.isNullOrBlank()) {
-                                        chunkConn.setRequestProperty("User-Agent", userAgent)
-                                    }
-                                    chunkConn.setRequestProperty("Referer", url)
-                                    chunkConn.connectTimeout = 15000
-                                    chunkConn.readTimeout = 15000
-                                    chunkConn.connect()
-
-                                    val chunkCode = chunkConn.responseCode
-                                    if (chunkCode == HttpURLConnection.HTTP_PARTIAL || chunkCode == HttpURLConnection.HTTP_OK) {
-                                        RandomAccessFile(finalFile, "rw").use { raf ->
-                                            raf.seek(startByte)
-                                            val buffer = ByteArray(8192)
-                                            val inputStream = chunkConn.inputStream
-                                            var bytesRead: Int
-                                            while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                                                raf.write(buffer, 0, bytesRead)
-                                                val currentTotal = totalDownloaded.addAndGet(bytesRead.toLong())
-                                                updateProgress(currentTotal)
-                                            }
-                                        }
-                                    } else {
-                                        throw Exception("Merespons dengan kode partial: $chunkCode")
-                                    }
-                                } finally {
-                                    chunkConn?.disconnect()
-                                }
-                            }
+                // Streaming unduhan langsung dengan buffer 32KB
+                conn.inputStream.use { input ->
+                    FileOutputStream(finalFile).use { output ->
+                        val buffer = ByteArray(32768)
+                        var bytesRead: Int
+                        while (input.read(buffer).also { bytesRead = it } != -1) {
+                            output.write(buffer, 0, bytesRead)
+                            val currentTotal = totalDownloaded.addAndGet(bytesRead.toLong())
+                            updateProgress(currentTotal)
                         }
-                        deferreds.awaitAll()
+                        output.flush()
                     }
-                } else {
-                    // Unduhan single thread sekuensial (untuk server yang tidak mendukung multi-range)
-                    val seqConn = URL(finalUrl).openConnection() as HttpURLConnection
-                    val cookiesSeq = CookieManager.getInstance().getCookie(finalUrl)
-                    if (!cookiesSeq.isNullOrBlank()) {
-                        seqConn.setRequestProperty("Cookie", cookiesSeq)
-                    }
-                    if (!userAgent.isNullOrBlank()) {
-                        seqConn.setRequestProperty("User-Agent", userAgent)
-                    }
-                    seqConn.setRequestProperty("Referer", url)
-                    seqConn.connectTimeout = 15000
-                    seqConn.readTimeout = 15000
-                    seqConn.connect()
-
-                    if (seqConn.responseCode !in 200..299) {
-                        throw Exception("Server merespons dengan kode: ${seqConn.responseCode}")
-                    }
-
-                    seqConn.inputStream.use { inputStream ->
-                        finalFile.outputStream().use { outputStream ->
-                            val buffer = ByteArray(8192)
-                            var bytesRead: Int
-                            while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                                outputStream.write(buffer, 0, bytesRead)
-                                val currentTotal = totalDownloaded.addAndGet(bytesRead.toLong())
-                                updateProgress(currentTotal)
-                            }
-                        }
-                    }
-                    seqConn.disconnect()
                 }
+                conn.disconnect()
+
+                val finalDownloadedBytes = totalDownloaded.get()
+                val finalTotal = if (totalBytes > 0) totalBytes else finalDownloadedBytes
 
                 // Pengunduhan Berhasil
                 database.downloadDao().updateDownloadProgress(
                     downloadId = downloadId,
                     status = 1, // Selesai
-                    downloadedBytes = totalBytes,
-                    totalBytes = totalBytes
+                    downloadedBytes = finalDownloadedBytes,
+                    totalBytes = finalTotal
                 )
 
                 // Notifikasi Selesai
                 val finishNotification = NotificationCompat.Builder(context, channelId)
                     .setContentTitle("Unduhan Selesai")
-                    .setContentText(finalFile.name)
+                    .setContentText("${finalFile.name} (${formatSize(finalDownloadedBytes)})")
                     .setSmallIcon(android.R.drawable.stat_sys_download_done)
                     .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                     .setOngoing(false)
                     .setAutoCancel(true)
                     .setProgress(0, 0, false)
 
-                // Klik notifikasi untuk langsung membuka file
+                // Intent klik untuk membuka file
                 try {
                     val fileUri = androidx.core.content.FileProvider.getUriForFile(
                         context,
@@ -333,7 +324,7 @@ class DownloadEngine(
                     )
                     finishNotification.setContentIntent(pendingIntent)
                 } catch (e: Exception) {
-                    // Abaikan kesalahan penanganan intent
+                    // Abaikan kesalahan pembuatan pending intent
                 }
 
                 notificationManager.cancel(downloadId.toInt())
@@ -344,7 +335,8 @@ class DownloadEngine(
                 }
 
             } catch (e: Exception) {
-                // Pengunduhan Gagal
+                activeConnection?.disconnect()
+
                 database.downloadDao().updateDownloadProgress(
                     downloadId = downloadId,
                     status = 2, // Gagal
@@ -354,7 +346,7 @@ class DownloadEngine(
 
                 val failNotification = NotificationCompat.Builder(context, channelId)
                     .setContentTitle("Unduhan Gagal")
-                    .setContentText("Gagal mengunduh ${finalFile.name}")
+                    .setContentText("Gagal mengunduh ${finalFile.name}: ${e.localizedMessage ?: "Kesalahan koneksi"}")
                     .setSmallIcon(android.R.drawable.stat_notify_error)
                     .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                     .setOngoing(false)
@@ -364,7 +356,7 @@ class DownloadEngine(
                 notificationManager.notify(downloadId.toInt(), failNotification.build())
 
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Gagal mengunduh: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "Gagal mengunduh: ${e.localizedMessage ?: "Kesalahan koneksi"}", Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -422,11 +414,8 @@ class DownloadEngine(
         }
     }
 
-    /**
-     * Memperbarui progress unduhan aktif dari DownloadManager (Hanya untuk backwards-compatibility)
-     */
     fun updateProgressForActiveDownloads(activeDownloads: List<DownloadItem>) {
-        // Dilewati untuk unduhan kustom kami karena sudah melakukan pembaruan real-time mandiri
+        // Dilewati untuk unduhan kustom
     }
 
     private fun getMimeTypeFromUrl(url: String): String? {

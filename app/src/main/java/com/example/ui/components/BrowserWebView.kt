@@ -128,6 +128,7 @@ fun BrowserWebView(
     onNavigationStateChanged: (Boolean, Boolean) -> Unit,
     onScriptsExecuted: (List<String>) -> Unit,
     onScriptInjected: (UserScript) -> Unit,
+    onUrlUpdated: (String, String?) -> Unit = { _, _ -> },
     onAdBlocked: () -> Unit = {},
     onDownloadRequested: (url: String, userAgent: String?, contentDisposition: String?, mimeType: String?) -> Unit = { _, _, _, _ -> },
     onFullScreenChanged: (Boolean) -> Unit = {},
@@ -388,6 +389,14 @@ fun BrowserWebView(
                             onScriptsExecuted(totalExecuted)
                         }
                     }
+                }
+
+                override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
+                    super.doUpdateVisitedHistory(view, url, isReload)
+                    val safeUrl = url ?: view?.url ?: return
+                    lastKnownUrl = safeUrl
+                    onUrlUpdated(safeUrl, view?.title)
+                    onNavigationStateChanged(view?.canGoBack() == true, view?.canGoForward() == true)
                 }
 
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {

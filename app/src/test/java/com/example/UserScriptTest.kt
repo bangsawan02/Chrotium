@@ -122,5 +122,45 @@ class UserScriptTest {
         assertTrue(js.contains("function GM_xmlhttpRequest"))
         assertTrue(js.contains("const GM ="))
     }
+
+    @Test
+    fun testWildcardPatterns() {
+        val script = UserScript(
+            id = 5L,
+            name = "Wildcard Test",
+            matchPatterns = "*github.com*, *youtube.com/watch*",
+            code = "// code",
+            isEnabled = true
+        )
+
+        assertTrue(script.matchesUrl("https://github.com/bangsawan02/Chrotium"))
+        assertTrue(script.matchesUrl("https://gist.github.com/user/12345"))
+        assertTrue(script.matchesUrl("https://www.youtube.com/watch?v=abc"))
+        assertFalse(script.matchesUrl("https://twitter.com/home"))
+    }
+
+    @Test
+    fun testParseMetadataRequiresAndGrants() {
+        val sampleCode = """
+            // ==UserScript==
+            // @name         Library Required Script
+            // @version      1.0
+            // @match        *://*/*
+            // @require      https://code.jquery.com/jquery-3.6.0.min.js
+            // @require      https://cdn.jsdelivr.net/npm/sweetalert2@11
+            // @grant        GM_xmlhttpRequest
+            // @grant        GM_setValue
+            // ==/UserScript==
+            console.log('loaded');
+        """.trimIndent()
+
+        val meta = UserScript.parseMetadata(sampleCode)
+        assertEquals("Library Required Script", meta.name)
+        assertEquals(2, meta.requires.size)
+        assertEquals("https://code.jquery.com/jquery-3.6.0.min.js", meta.requires[0])
+        assertEquals("https://cdn.jsdelivr.net/npm/sweetalert2@11", meta.requires[1])
+        assertEquals(2, meta.grants.size)
+        assertEquals("GM_xmlhttpRequest", meta.grants[0])
+    }
 }
 

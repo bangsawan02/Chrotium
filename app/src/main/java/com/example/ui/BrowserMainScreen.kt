@@ -36,7 +36,6 @@ import com.example.ui.components.SearchSuggestionsDropdown
 import com.example.ui.components.TranslateBar
 import com.example.ui.dialogs.AdBlockSheet
 import com.example.ui.dialogs.BookmarksHistorySheet
-import com.example.ui.dialogs.CookieManagerSheet
 import com.example.ui.dialogs.DownloadsSheet
 import com.example.ui.dialogs.SettingsSheet
 import com.example.ui.dialogs.TabsSheet
@@ -196,6 +195,7 @@ fun BrowserMainScreen(
                             onNavigationStateChanged = { back, forward -> viewModel.onNavigationStateChanged(back, forward, tab.id) },
                             onScriptsExecuted = { viewModel.onScriptsExecuted(it, tab.id) },
                             onScriptInjected = { script -> viewModel.onScriptInjected(script.id) },
+                            onUrlUpdated = { url, title -> viewModel.onUrlUpdated(url, title, tab.id) },
                             onAdBlocked = { viewModel.onAdBlocked(tab.id) },
                             onDownloadRequested = { url, ua, cd, mime -> viewModel.startDownload(url, ua, cd, mime) },
                             onFullScreenChanged = { viewModel.setFullscreen(it) },
@@ -313,7 +313,6 @@ fun BrowserMainScreen(
                 onToggleDevTools = { viewModel.toggleDevTools() },
                 onToggleH264ify = { viewModel.toggleH264ify() },
                 onOpenDownloads = { viewModel.showSheet(ActiveSheet.DOWNLOADS) },
-                onOpenCookieManager = { viewModel.showSheet(ActiveSheet.COOKIE_MANAGER) },
                 onOpenAdBlock = { viewModel.showSheet(ActiveSheet.ADBLOCK) },
                 onOpenTranslate = { viewModel.showSheet(ActiveSheet.TRANSLATE) },
                 onSelectSearchEngine = { viewModel.setSearchEngine(it) },
@@ -330,12 +329,6 @@ fun BrowserMainScreen(
                 onOpenFile = { viewModel.openDownloadedFile(it) },
                 onDeleteDownload = { viewModel.deleteDownload(it) },
                 onClearAll = { viewModel.clearAllDownloads() },
-                onDismiss = { viewModel.hideSheet() }
-            )
-        }
-        ActiveSheet.COOKIE_MANAGER -> {
-            CookieManagerSheet(
-                currentUrl = activeTab?.url ?: "",
                 onDismiss = { viewModel.hideSheet() }
             )
         }

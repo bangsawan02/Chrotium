@@ -245,12 +245,30 @@ object WebConfig {
                 `;
                 (document.head || document.documentElement).appendChild(style);
 
-                // 2. Optimasi SPA History Routing (Angular Router / React Router / Vue Router)
+                // 2. Optimasi SPA & YouTube Real-Time URL Tracking (Angular, React, Vue, YouTube, Twitter)
+                var lastReportedUrl = location.href;
+                var lastReportedTitle = document.title;
+
+                function reportUrlChange() {
+                    try {
+                        var curUrl = location.href;
+                        var curTitle = document.title || curUrl;
+                        if (curUrl && curUrl !== 'about:blank' && (curUrl !== lastReportedUrl || curTitle !== lastReportedTitle)) {
+                            lastReportedUrl = curUrl;
+                            lastReportedTitle = curTitle;
+                            if (window.TampermonkeyBridge && typeof window.TampermonkeyBridge.onSpaUrlChanged === 'function') {
+                                window.TampermonkeyBridge.onSpaUrlChanged(curUrl, curTitle);
+                            }
+                        }
+                    } catch(e) {}
+                }
+
                 function hookHistoryMethod(method) {
                     var original = history[method];
                     if (typeof original === 'function') {
                         history[method] = function() {
                             var result = original.apply(this, arguments);
+                            setTimeout(reportUrlChange, 10);
                             try {
                                 var ev = new CustomEvent('chrotium:spapathchange', {
                                     detail: { url: location.href, title: document.title }
@@ -263,6 +281,15 @@ object WebConfig {
                 }
                 hookHistoryMethod('pushState');
                 hookHistoryMethod('replaceState');
+
+                window.addEventListener('popstate', function() { setTimeout(reportUrlChange, 10); }, true);
+                window.addEventListener('hashchange', function() { setTimeout(reportUrlChange, 10); }, true);
+                window.addEventListener('yt-navigate-finish', function() { setTimeout(reportUrlChange, 10); }, true);
+                window.addEventListener('yt-page-data-updated', function() { setTimeout(reportUrlChange, 10); }, true);
+                window.addEventListener('yt-action', function() { setTimeout(reportUrlChange, 25); }, true);
+
+                // Polling ringan untuk menjamin URL selalu sinkron di SPA dinamis
+                setInterval(reportUrlChange, 350);
 
                 // 3. Konfigurasi Zone.js Performance Hints jika Angular digunakan
                 if (typeof window !== 'undefined') {

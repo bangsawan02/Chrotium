@@ -10,7 +10,9 @@ data class ParsedScriptMetadata(
     val author: String,
     val version: String,
     val runAt: String,
-    val matchPatterns: String
+    val matchPatterns: String,
+    val requires: List<String> = emptyList(),
+    val grants: List<String> = emptyList()
 )
 
 @Entity(tableName = "userscripts")
@@ -62,9 +64,6 @@ data class UserScript(
         if (includeRules.isEmpty()) return true
 
         for (pattern in includeRules) {
-            if (pattern == "*" || pattern == "*://*/*" || pattern == "<all_urls>") {
-                return true
-            }
             if (matchPattern(pattern, targetUrl)) {
                 return true
             }
@@ -77,12 +76,16 @@ data class UserScript(
         private val patternCache = java.util.concurrent.ConcurrentHashMap<String, Pattern>()
 
         fun matchPattern(pattern: String, url: String): Boolean {
-            if (pattern == "*" || pattern == "<all_urls>" || pattern == "*://*/*") return true
-            if (pattern == url) return true
+            val trimmed = pattern.trim()
+            if (trimmed.isEmpty()) return false
+            if (trimmed == "*" || trimmed == "<all_urls>" || trimmed == "*://*/*" || trimmed == "*://*" || trimmed == "*://*") {
+                return true
+            }
+            if (trimmed == url) return true
 
             return try {
-                val compiled = patternCache.getOrPut(pattern) {
-                    compilePatternToRegex(pattern)
+                val compiled = patternCache.getOrPut(trimmed) {
+                    compilePatternToRegex(trimmed)
                 }
                 compiled.matcher(url).find()
             } catch (e: Exception) {
@@ -134,10 +137,18 @@ data class UserScript(
                     hostPart.contains("*") -> {
                         buildWildcardHostRegex(hostPart)
                     }
-                    else -> Pattern.quote(hostPart)
+                    else -> {
+                        // Allow exact host or subdomain match if standard domain e.g. youtube.com
+                        val quoted = Pattern.quote(hostPart)
+                        if (!hostPart.startsWith("www.") && hostPart.count { it == '.' } == 1) {
+                            "([a-zA-Z0-9.-]+\\.)?$quoted"
+                        } else {
+                            quoted
+                        }
+                    }
                 }
 
-                val pathRegex = if (pathPart == "*") {
+                val pathRegex = if (pathPart == "*" || pathPart.isEmpty()) {
                     ".*"
                 } else {
                     buildWildcardPathRegex(pathPart)
@@ -146,19 +157,21 @@ data class UserScript(
                 return Pattern.compile("^$schemeRegex$hostRegex(/$pathRegex)?$", Pattern.CASE_INSENSITIVE)
             }
 
-            // 3. Fallback generic wildcard matcher
-            var regexStr = Pattern.quote(trimmed)
-                .replace("\\*", ".*")
-                .replace("\\?", ".")
-
-            if (!regexStr.startsWith(".*") && !regexStr.startsWith("http")) {
-                regexStr = ".*$regexStr"
+            // 3. Fallback Greasemonkey wildcard matcher (*, ?, literal chars)
+            val sb = StringBuilder("^")
+            for (c in trimmed) {
+                when (c) {
+                    '*' -> sb.append(".*")
+                    '?' -> sb.append(".")
+                    '.', '(', ')', '[', ']', '{', '}', '+', '^', '$', '|', '\\' -> {
+                        sb.append('\\').append(c)
+                    }
+                    else -> sb.append(c)
+                }
             }
-            if (!regexStr.endsWith(".*")) {
-                regexStr = "$regexStr.*"
-            }
+            sb.append("$")
 
-            return Pattern.compile("^$regexStr$", Pattern.CASE_INSENSITIVE)
+            return Pattern.compile(sb.toString(), Pattern.CASE_INSENSITIVE)
         }
 
         private fun buildWildcardHostRegex(host: String): String {
@@ -179,6 +192,8 @@ data class UserScript(
             var runAt = "document-idle"
             val includes = mutableListOf<String>()
             val excludes = mutableListOf<String>()
+            val requires = mutableListOf<String>()
+            val grants = mutableListOf<String>()
 
             val lines = code.lines()
             var inHeader = false
@@ -215,6 +230,8 @@ data class UserScript(
                             "@match" -> if (value.isNotEmpty()) includes.add(value)
                             "@include" -> if (value.isNotEmpty()) includes.add(value)
                             "@exclude" -> if (value.isNotEmpty()) excludes.add("!$value")
+                            "@require" -> if (value.isNotEmpty()) requires.add(value)
+                            "@grant" -> if (value.isNotEmpty()) grants.add(value)
                         }
                     }
                 }
@@ -229,7 +246,9 @@ data class UserScript(
                 author = author,
                 version = version,
                 runAt = runAt,
-                matchPatterns = patternString
+                matchPatterns = patternString,
+                requires = requires,
+                grants = grants
             )
         }
     }

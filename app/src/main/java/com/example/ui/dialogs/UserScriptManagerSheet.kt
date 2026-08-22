@@ -451,7 +451,13 @@ fun UserScriptManagerSheet(
                     1 -> PresetStoreTab(
                         installedScripts = scripts,
                         onInstall = { preset ->
-                            onSaveScript(preset)
+                            val existing = scripts.find { it.name.trim().equals(preset.name.trim(), ignoreCase = true) }
+                            val scriptToInstall = if (existing != null) {
+                                preset.copy(id = existing.id, isEnabled = true)
+                            } else {
+                                preset.copy(id = 0L, isEnabled = true)
+                            }
+                            onSaveScript(scriptToInstall)
                             Toast.makeText(context, "Skrip \"${preset.name}\" berhasil dipasang", Toast.LENGTH_SHORT).show()
                         }
                     )

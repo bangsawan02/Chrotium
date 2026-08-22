@@ -23,21 +23,17 @@ class BrowserRepository(private val database: AppDatabase) {
         database.tabSessionDao().replaceAll(sessions)
     }
 
-    suspend fun initializePresetsIfEmpty() = withContext(Dispatchers.IO) {
-        // Remove obsolete built-in default scripts from existing installations
-        database.userScriptDao().deleteBuiltInScriptsExcept("Battery Saver CPU Throttler")
-        
-        // Update the existing Battery Saver script to version 1.6 to fix website breakage (React/Angular)
-        val defaultScripts = PreinstalledScripts.getDefaultScripts()
-        val batterySaver = defaultScripts.find { it.name == "Battery Saver CPU Throttler" }
-        if (batterySaver != null) {
-            database.userScriptDao().updateScript(batterySaver)
+    suspend fun initializePresetsIfEmpty(prefs: android.content.SharedPreferences? = null) = withContext(Dispatchers.IO) {
+        val alreadyInitialized = prefs?.getBoolean("pref_userscripts_first_run_done", false) ?: false
+        if (alreadyInitialized) {
+            return@withContext
         }
 
         val count = database.userScriptDao().getScriptsCount()
         if (count == 0) {
-            database.userScriptDao().insertAll(defaultScripts)
+            database.userScriptDao().insertAll(PreinstalledScripts.getDefaultScripts())
         }
+        prefs?.edit()?.putBoolean("pref_userscripts_first_run_done", true)?.apply()
     }
 
     suspend fun getEnabledScripts(): List<UserScript> = withContext(Dispatchers.IO) {

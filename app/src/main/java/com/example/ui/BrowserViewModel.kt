@@ -56,7 +56,6 @@ enum class ActiveSheet {
     BOOKMARKS_HISTORY,
     SETTINGS,
     DOWNLOADS,
-    COOKIE_MANAGER,
     ADBLOCK,
     TRANSLATE
 }
@@ -213,9 +212,13 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     init {
+        tampermonkeyBridge.onUrlChangeListener = { url, title ->
+            onUrlUpdated(url, title)
+        }
+
         viewModelScope.launch {
             try {
-                repository.initializePresetsIfEmpty()
+                repository.initializePresetsIfEmpty(settingsPrefs)
                 
                 // Restore tabs from DB
                 val savedSessions = repository.getTabSessions()
@@ -319,6 +322,30 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             viewModelScope.launch {
                 repository.addHistory(pageTitle, url)
             }
+        }
+    }
+
+    fun onUrlUpdated(url: String, title: String? = null, tabId: String? = null) {
+        if (url.isBlank() || url == "about:blank") return
+        val targetTabId = tabId ?: _uiState.value.activeTabId
+        val pageTitle = title?.ifBlank { url } ?: url
+
+        updateTabById(targetTabId) {
+            it.copy(
+                url = url,
+                title = if (pageTitle.isBlank() || pageTitle == "about:blank") url else pageTitle
+            )
+        }
+
+        if (targetTabId == _uiState.value.activeTabId) {
+            if (!_uiState.value.isOmniboxFocused && _uiState.value.omniboxText != url) {
+                _uiState.value = _uiState.value.copy(omniboxText = url)
+            }
+            checkBookmarkStatus(url)
+        }
+
+        viewModelScope.launch {
+            repository.addHistory(pageTitle, url)
         }
     }
 

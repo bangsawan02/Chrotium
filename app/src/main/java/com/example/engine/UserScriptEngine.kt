@@ -199,10 +199,17 @@ object UserScriptEngine {
 
                     xhr.onload = function() {
                         if (typeof details.onload === 'function') {
+                            let respText = "";
+                            try {
+                                if (!xhr.responseType || xhr.responseType === "text") {
+                                    respText = xhr.responseText;
+                                }
+                            } catch(e) {}
+
                             details.onload({
                                 status: xhr.status,
                                 statusText: xhr.statusText,
-                                responseText: xhr.responseText,
+                                responseText: respText,
                                 response: xhr.response,
                                 responseHeaders: xhr.getAllResponseHeaders(),
                                 readyState: xhr.readyState,
@@ -239,6 +246,23 @@ object UserScriptEngine {
                     setClipboard: (d, t) => Promise.resolve(GM_setClipboard(d, t)),
                     openInTab: (u, o) => Promise.resolve(GM_openInTab(u, o))
                 };
+
+                // Expose GM APIs to unsafeWindow / window scope for legacy scripts
+                try {
+                    unsafeWindow.GM_info = GM_info;
+                    unsafeWindow.GM_addStyle = GM_addStyle;
+                    unsafeWindow.GM_setValue = GM_setValue;
+                    unsafeWindow.GM_getValue = GM_getValue;
+                    unsafeWindow.GM_deleteValue = GM_deleteValue;
+                    unsafeWindow.GM_listValues = GM_listValues;
+                    unsafeWindow.GM_log = GM_log;
+                    unsafeWindow.GM_notification = GM_notification;
+                    unsafeWindow.GM_setClipboard = GM_setClipboard;
+                    unsafeWindow.GM_openInTab = GM_openInTab;
+                    unsafeWindow.GM_xmlhttpRequest = GM_xmlhttpRequest;
+                    unsafeWindow.GM = GM;
+                    unsafeWindow.unsafeWindow = unsafeWindow;
+                } catch(e) {}
 
                 // Execute UserScript body inside its isolated scope
                 $rawCode
