@@ -34,7 +34,7 @@ data class TabItem(
     val isIncognito: Boolean = false,
     val isReaderMode: Boolean = false,
     val isDevToolsEnabled: Boolean = false,
-    val isH264ifyEnabled: Boolean = true,
+    val isH264ifyEnabled: Boolean = false,
     val blockedRequestsCount: Int = 0,
     val activeScriptsCount: Int = 0,
     val activeScriptNames: List<String> = emptyList()

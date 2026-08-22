@@ -292,6 +292,8 @@ object WebConfig {
                         will-change: transform, opacity !important;
                         backface-visibility: hidden !important;
                         -webkit-backface-visibility: hidden !important;
+                        image-rendering: -webkit-optimize-contrast !important;
+                        image-rendering: crisp-edges !important;
                     }
                 `;
                 (document.head || document.documentElement).appendChild(style);
@@ -321,6 +323,8 @@ object WebConfig {
                         will-change: transform !important;
                         backface-visibility: hidden !important;
                         -webkit-backface-visibility: hidden !important;
+                        image-rendering: -webkit-optimize-contrast !important;
+                        image-rendering: crisp-edges !important;
                     }
                     /* Disable heavy YouTube Ambient Mode / Cinematics effect causing GPU lag */
                     #cinematics, ytd-watch-flexy[ambient-mode] #cinematics, .ytp-gradient-bottom, .ytp-gradient-top {
