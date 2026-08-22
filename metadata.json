@@ -1,0 +1,8 @@
+{
+  "name": "Chrotium Browser",
+  "description": "Lightweight browser with userscript support and night mode to maximize battery efficiency.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
