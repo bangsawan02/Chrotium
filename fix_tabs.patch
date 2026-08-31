@@ -1,0 +1,79 @@
+--- app/src/main/java/com/example/ui/dialogs/TabsSheet.kt
++++ app/src/main/java/com/example/ui/dialogs/TabsSheet.kt
+@@ -139,15 +139,33 @@
+                     indication = null,
+                     onClick = onDismiss
+                 ),
+-            contentAlignment = Alignment.Center
++            contentAlignment = Alignment.BottomCenter
+         ) {
+             Surface(
+                 modifier = modifier
+-                    .fillMaxWidth(0.94f)
+-                    .widthIn(max = 580.dp)
+-                    .fillMaxHeight(0.86f)
+-                    .heightIn(max = 760.dp)
+-                    .clip(RoundedCornerShape(24.dp))
++                    .fillMaxWidth()
++                    .fillMaxHeight(0.85f)
++                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                     .clickable(
+                         interactionSource = remember { MutableInteractionSource() },
+                         indication = null,
+@@ -154,6 +172,6 @@
+                     )
+-                    .testTag("tabs_middle_dialog"),
+-                shape = RoundedCornerShape(24.dp),
++                    .testTag("tabs_bottom_dialog"),
++                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                 color = MaterialTheme.colorScheme.surface,
+                 tonalElevation = 8.dp,
+                 shadowElevation = 14.dp
+@@ -160,9 +178,29 @@
+                 Column(
+                     modifier = Modifier
+                         .fillMaxSize()
+-                        .padding(18.dp)
+-                ) {
+-                    // Header Bar
++                ) {
++                    // Drag Handle
++                    Box(
++                        modifier = Modifier
++                            .fillMaxWidth()
++                            .padding(top = 12.dp, bottom = 4.dp),
++                        contentAlignment = Alignment.Center
++                    ) {
++                        Box(
++                            modifier = Modifier
++                                .width(36.dp)
++                                .height(4.dp)
++                                .clip(RoundedCornerShape(2.dp))
++                                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
++                        )
++                    }
++                    
++                    Column(
++                        modifier = Modifier
++                            .fillMaxSize()
++                            .padding(horizontal = 18.dp, vertical = 8.dp)
++                    ) {
++                        // Header Bar
+                     Row(
+                         modifier = Modifier.fillMaxWidth(),
+                         verticalAlignment = Alignment.CenterVertically,
+@@ -528,7 +566,8 @@
+                             )
+                         }
+                     }
+-                }
+-            }
+-        }
+-    }
+-}
++                } // Close inner Column
++                } // Close outer Column
++            } // Close Surface
++        } // Close Box
++    } // Close Dialog
++} // Close TabsSheet function
