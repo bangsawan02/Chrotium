@@ -41,7 +41,6 @@ import com.example.ui.components.SearchSuggestionsDropdown
 import com.example.ui.components.TranslateBar
 import com.example.ui.dialogs.AdBlockSheet
 import com.example.ui.dialogs.BookmarksHistorySheet
-import com.example.ui.dialogs.DownloadsSheet
 import com.example.ui.dialogs.SettingsSheet
 import com.example.ui.dialogs.TabsSheet
 import com.example.ui.dialogs.TranslateSheet
@@ -76,7 +75,6 @@ fun BrowserMainScreen(
     val allBookmarks by viewModel.allBookmarks.collectAsStateWithLifecycle()
     val allHistory by viewModel.allHistory.collectAsStateWithLifecycle()
     val scriptLogs by viewModel.scriptLogs.collectAsStateWithLifecycle()
-    val downloads by viewModel.downloads.collectAsStateWithLifecycle()
     val adBlockStats by viewModel.adBlockStats.collectAsStateWithLifecycle()
     val translationBarState by viewModel.translationBarState.collectAsStateWithLifecycle()
 
@@ -214,11 +212,10 @@ fun BrowserMainScreen(
                     onAddShortcut = { title, url -> viewModel.addShortcut(title, url) },
                     onEditShortcut = { oldShortcut, newTitle, newUrl -> viewModel.editShortcut(oldShortcut, newTitle, newUrl) },
                     onDeleteShortcut = { viewModel.deleteShortcut(it) },
-                    downloadsCount = downloads.size,
                     onNavigate = { viewModel.openUrl(it) },
                     onOpenScriptManager = { viewModel.showSheet(ActiveSheet.SCRIPTS_MANAGER) },
                     onOpenBookmarks = { viewModel.showSheet(ActiveSheet.BOOKMARKS_HISTORY) },
-                    onOpenDownloads = { viewModel.showSheet(ActiveSheet.DOWNLOADS) }
+                    onOpenDownloads = { viewModel.openSystemDownloads(context) }
                 )
             }
             
@@ -428,7 +425,7 @@ fun BrowserMainScreen(
                 onToggleH264ify = { viewModel.toggleH264ify() },
                 onToggleQuickScroll = { viewModel.toggleQuickScroll() },
                 onTogglePullToRefresh = { viewModel.togglePullToRefresh() },
-                onOpenDownloads = { viewModel.showSheet(ActiveSheet.DOWNLOADS) },
+                onOpenDownloads = { viewModel.openSystemDownloads(context) },
                 onOpenAdBlock = { viewModel.showSheet(ActiveSheet.ADBLOCK) },
                 onOpenTranslate = { viewModel.showSheet(ActiveSheet.TRANSLATE) },
                 onPrintPdf = {
@@ -468,15 +465,6 @@ fun BrowserMainScreen(
                 onClearSiteData = { host ->
                     viewModel.clearSiteData(host, activeWebView)
                 },
-                onDismiss = { viewModel.hideSheet() }
-            )
-        }
-        ActiveSheet.DOWNLOADS -> {
-            DownloadsSheet(
-                downloads = downloads,
-                onOpenFile = { viewModel.openDownloadedFile(it) },
-                onDeleteDownload = { viewModel.deleteDownload(it) },
-                onClearAll = { viewModel.clearAllDownloads() },
                 onDismiss = { viewModel.hideSheet() }
             )
         }

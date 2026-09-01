@@ -82,7 +82,6 @@ fun HomeDashboard(
     onAddShortcut: (String, String) -> Unit,
     onEditShortcut: (ShortcutItem, String, String) -> Unit,
     onDeleteShortcut: (ShortcutItem) -> Unit,
-    downloadsCount: Int = 0,
     onNavigate: (String) -> Unit,
     onOpenScriptManager: () -> Unit,
     onOpenBookmarks: () -> Unit,
@@ -355,7 +354,7 @@ fun HomeDashboard(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = "$downloadsCount file",
+                                text = "Files",
                                 color = MaterialTheme.colorScheme.outline,
                                 fontSize = 10.sp,
                                 maxLines = 1,

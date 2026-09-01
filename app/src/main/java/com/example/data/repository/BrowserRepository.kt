@@ -108,12 +108,4 @@ class BrowserRepository(private val database: AppDatabase) {
     suspend fun clearHistory() = withContext(Dispatchers.IO) {
         database.historyDao().clearAllHistory()
     }
-
-    suspend fun getDownloadsSync(): List<com.example.data.model.DownloadItem> = withContext(Dispatchers.IO) {
-        database.downloadDao().getAllDownloadsSync()
-    }
-
-    suspend fun updateDownloadProgress(downloadId: Long, status: Int, downloadedBytes: Long, totalBytes: Long) = withContext(Dispatchers.IO) {
-        database.downloadDao().updateDownloadProgress(downloadId, status, downloadedBytes, totalBytes)
-    }
 }

@@ -8,21 +8,15 @@ import android.util.Base64
 import android.webkit.CookieManager
 import android.webkit.URLUtil
 import android.widget.Toast
-import com.example.data.db.AppDatabase
-import com.example.data.model.DownloadItem
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
 
 class DownloadEngine(
-    private val context: Context,
-    private val database: AppDatabase
+    private val context: Context
 ) {
-    val downloads: Flow<List<DownloadItem>> = database.downloadDao().getAllDownloads()
-
     fun startDownload(
         url: String,
         userAgent: String?,
@@ -118,42 +112,6 @@ class DownloadEngine(
                 CoroutineScope(Dispatchers.Main).launch {
                     Toast.makeText(context, "Failed to save file", Toast.LENGTH_SHORT).show()
                 }
-            }
-        }
-    }
-
-    fun openDownloadedFile(item: DownloadItem) {
-        try {
-            val uri = Uri.parse(item.fileUri)
-            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, item.mimeType)
-                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            context.startActivity(intent)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Toast.makeText(context, "Could not open file", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    fun deleteDownload(item: DownloadItem) {
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                com.example.util.StorageHelper.deleteDownload(context, item.fileUri, item.filePath)
-                database.downloadDao().deleteDownload(item)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
-
-    fun clearAll() {
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                database.downloadDao().clearAllDownloads()
-            } catch (e: Exception) {
-                e.printStackTrace()
             }
         }
     }

@@ -48,18 +48,4 @@ object StorageHelper {
         } catch (_: Exception) {}
     }
     
-    /**
-     * Menghapus file unduhan (via Uri atau File fallback)
-     */
-    fun deleteDownload(context: Context, uriString: String?, filePath: String) {
-        try {
-            if (!uriString.isNullOrBlank()) {
-                context.contentResolver.delete(Uri.parse(uriString), null, null)
-            }
-            val file = File(filePath)
-            if (file.exists()) {
-                file.delete()
-            }
-        } catch (_: Exception) {}
-    }
 }

@@ -11,7 +11,6 @@ import com.example.data.db.AppDatabase
 import com.example.data.defaultShortcuts
 import com.example.data.deserializeShortcuts
 import com.example.data.model.Bookmark
-import com.example.data.model.DownloadItem
 import com.example.data.model.HistoryItem
 import com.example.data.model.SuggestionItem
 import com.example.data.model.SuggestionType
@@ -57,7 +56,6 @@ enum class ActiveSheet {
     BOOKMARKS_HISTORY,
     SETTINGS,
     SITE_SETTINGS,
-    DOWNLOADS,
     ADBLOCK,
     TRANSLATE
 }
@@ -100,18 +98,10 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     val repository by lazy { BrowserRepository(database) }
     val tampermonkeyBridge by lazy { TampermonkeyBridge(application) }
     val suggestionEngine by lazy { SuggestionEngine(database) }
-    val downloadEngine by lazy { DownloadEngine(application, database) }
+    val downloadEngine by lazy { DownloadEngine(application) }
     val adBlockEngine by lazy { com.example.engine.AdBlockEngine(application) }
 
     val adBlockStats: StateFlow<com.example.engine.AdBlockStats> by lazy { adBlockEngine.stats }
-
-    val downloads: StateFlow<List<DownloadItem>> by lazy {
-        downloadEngine.downloads.stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList()
-        )
-    }
 
     private var suggestionJob: Job? = null
     private var suggestionRequestToken: Int = 0
@@ -236,14 +226,6 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
         viewModelScope.launch {
             try {
-                // Mark interrupted downloads as failed
-                val activeDownloads = repository.getDownloadsSync()
-                activeDownloads.forEach { 
-                    if (it.status == 0) {
-                        repository.updateDownloadProgress(it.downloadId, 2, it.downloadedBytes, it.totalBytes)
-                    }
-                }
-
                 repository.initializePresetsIfEmpty(settingsPrefs)
                 
                 // Restore tabs from DB
@@ -633,16 +615,14 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         )
     }
 
-    fun openDownloadedFile(item: DownloadItem) {
-        downloadEngine.openDownloadedFile(item)
-    }
-
-    fun deleteDownload(item: DownloadItem) {
-        downloadEngine.deleteDownload(item)
-    }
-
-    fun clearAllDownloads() {
-        downloadEngine.clearAll()
+    fun openSystemDownloads(context: android.content.Context) {
+        try {
+            context.startActivity(android.content.Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS).apply {
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private val pendingAdBlockCounts = mutableMapOf<String?, Int>()
