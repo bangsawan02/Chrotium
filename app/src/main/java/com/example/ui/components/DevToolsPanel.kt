@@ -137,10 +137,19 @@ fun DevToolsPanel(
 
     // Evaluasi JavaScript di Target WebView
     fun executeJsOnTarget(script: String, onResult: ((String) -> Unit)? = null) {
-        targetWebView?.post {
-            targetWebView.evaluateJavascript(script) { res ->
-                val cleaned = if (res == null || res == "null") "undefined" else res
-                onResult?.invoke(cleaned)
+        val wv = targetWebView
+        if (wv != null) {
+            wv.post {
+                try {
+                    wv.evaluateJavascript(script) { res ->
+                        val cleaned = if (res == null || res == "null") "undefined" else res
+                        onResult?.invoke(cleaned)
+                    }
+                } catch (e: Exception) {
+                    // WebView may have been destroyed between post() and evaluateJavascript()
+                    android.util.Log.w("DevToolsPanel", "Failed to execute JS on target: ${e.message}")
+                    onResult?.invoke("Error: ${e.message}")
+                }
             }
         }
     }

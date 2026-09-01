@@ -55,8 +55,10 @@ class AdBlockEngine(private val context: Context) {
     private val hostBlockCache = ConcurrentHashMap<String, Boolean>(512)
     private val maxCacheSize = 2048
 
-    // Thread-safe HashSet berisi seluruh daftar domain yang diblokir
-    private val blockedDomains: MutableSet<String> = Collections.synchronizedSet(HashSet<String>())
+    // Fast mutable set + narrow synchronization window for hot-path lookups.
+    private val blockedDomainsLock = Any()
+    private val blockedDomains: MutableSet<String> = HashSet(4096)
+    private val whitelistCache = ConcurrentHashMap<String, Boolean>(256)
 
     // Hardcoded static high-priority blocklist (iklan, pelacak, analitik utama)
     private val staticBlockedDomains = hashSetOf(
@@ -202,8 +204,7 @@ class AdBlockEngine(private val context: Context) {
     )
 
     init {
-        // Muat staticBlockedDomains secara sinkron (instan, no blocking I/O)
-        synchronized(blockedDomains) {
+        synchronized(blockedDomainsLock) {
             blockedDomains.addAll(staticBlockedDomains)
         }
         Log.d("AdBlockEngine", "AdBlock diinisialisasi sinkron dengan ${blockedDomains.size} domain statis.")
@@ -228,7 +229,7 @@ class AdBlockEngine(private val context: Context) {
                         }
                     }
                     if (cloudSet.isNotEmpty()) {
-                        synchronized(blockedDomains) {
+                        synchronized(blockedDomainsLock) {
                             blockedDomains.addAll(cloudSet)
                         }
                         hostBlockCache.clear()
@@ -241,38 +242,53 @@ class AdBlockEngine(private val context: Context) {
         }
     }
 
+    private fun normalizeHost(rawUrlOrHost: String?): String? {
+        if (rawUrlOrHost.isNullOrBlank()) return null
+        return try {
+            val raw = rawUrlOrHost.trim()
+            if (raw.startsWith("http://", ignoreCase = true) || raw.startsWith("https://", ignoreCase = true)) {
+                Uri.parse(raw).host?.lowercase()?.trim() ?: raw.lowercase().trim()
+            } else {
+                raw.lowercase().trim().removePrefix(".")
+            }
+        } catch (e: Exception) {
+            rawUrlOrHost.lowercase().trim().removePrefix(".")
+        }
+    }
+
     /**
      * Memvalidasi apakah sebuah host terblokir dengan pencarian bertingkat O(1).
      * Contoh: ads.doubleclick.net -> doubleclick.net -> net
      */
     private fun isHostBlocked(host: String): Boolean {
-        if (host.isBlank()) return false
-        
-        // 1. Ambil dari cache keputusan (menghindari manipulasi String dan GC overhead)
-        val cached = hostBlockCache[host]
+        val normalizedHost = normalizeHost(host) ?: return false
+        if (normalizedHost.isBlank()) return false
+
+        val cached = hostBlockCache[normalizedHost]
         if (cached != null) {
             return cached
         }
 
-        // 2. Evaluasi hierarkis domain
-        var isBlocked = blockedDomains.contains(host)
-        if (!isBlocked) {
-            var dotIndex = host.indexOf('.')
-            while (dotIndex != -1 && dotIndex < host.length - 1) {
-                val parentDomain = host.substring(dotIndex + 1)
-                if (blockedDomains.contains(parentDomain)) {
-                    isBlocked = true
-                    break
+        var isBlocked = false
+        synchronized(blockedDomainsLock) {
+            isBlocked = blockedDomains.contains(normalizedHost)
+            if (!isBlocked) {
+                var startIndex = normalizedHost.indexOf('.')
+                while (startIndex > 0 && startIndex < normalizedHost.length - 1) {
+                    val parentDomain = normalizedHost.substring(startIndex + 1)
+                    if (blockedDomains.contains(parentDomain)) {
+                        isBlocked = true
+                        break
+                    }
+                    startIndex = normalizedHost.indexOf('.', startIndex + 1)
                 }
-                dotIndex = host.indexOf('.', dotIndex + 1)
             }
         }
 
-        // 3. Simpan hasil keputusan ke cache (Pruning jika penuh untuk mencegah OOM)
         if (hostBlockCache.size >= maxCacheSize) {
             hostBlockCache.clear()
         }
-        hostBlockCache[host] = isBlocked
+        hostBlockCache[normalizedHost] = isBlocked
         return isBlocked
     }
 
@@ -284,23 +300,11 @@ class AdBlockEngine(private val context: Context) {
         if (!currentStats.isEnabled) return false
 
         val uri = request.url ?: return false
-        val host = uri.host?.lowercase() ?: return false
+        val host = normalizeHost(uri.host ?: return false) ?: return false
         val fullUrl = uri.toString()
 
-        // Evaluasi host pemanggil untuk whitelist tanpa menyimpan di member variable (thread-safe)
-        val pageHost = if (pageUrl != null) {
-            try {
-                if (pageUrl.startsWith("http://") || pageUrl.startsWith("https://")) {
-                    Uri.parse(pageUrl).host?.lowercase()
-                } else {
-                    pageUrl.lowercase()
-                }
-            } catch (e: Exception) {
-                null
-            }
-        } else null
+        val pageHost = normalizeHost(pageUrl)
 
-        // Bypass jika domain induk atau domain aktif dikecualikan (whitelist)
         if (isDomainWhitelisted(pageHost) || isDomainWhitelisted(host)) {
             return false
         }
@@ -340,42 +344,35 @@ class AdBlockEngine(private val context: Context) {
      * Pemeriksaan whitelist O(1) dengan pencarian berjenjang
      */
     fun isDomainWhitelisted(urlOrDomain: String?): Boolean {
-        if (urlOrDomain.isNullOrBlank()) return false
-        val host = try {
-            if (urlOrDomain.startsWith("http://") || urlOrDomain.startsWith("https://")) {
-                Uri.parse(urlOrDomain).host?.lowercase() ?: urlOrDomain.lowercase()
-            } else {
-                urlOrDomain.lowercase()
-            }
-        } catch (e: Exception) {
-            urlOrDomain.lowercase()
-        }
-
+        val host = normalizeHost(urlOrDomain) ?: return false
         val whitelisted = _stats.value.whitelistedDomains
         if (whitelisted.isEmpty() || host.isBlank()) return false
 
-        if (whitelisted.contains(host)) return true
+        val cached = whitelistCache[host]
+        if (cached != null) return cached
 
-        var dotIndex = host.indexOf('.')
-        while (dotIndex != -1 && dotIndex < host.length - 1) {
-            val parentDomain = host.substring(dotIndex + 1)
-            if (whitelisted.contains(parentDomain)) return true
-            dotIndex = host.indexOf('.', dotIndex + 1)
+        var result = whitelisted.contains(host)
+        if (!result) {
+            var dotIndex = host.indexOf('.')
+            while (dotIndex > 0 && dotIndex < host.length - 1) {
+                val parentDomain = host.substring(dotIndex + 1)
+                if (whitelisted.contains(parentDomain)) {
+                    result = true
+                    break
+                }
+                dotIndex = host.indexOf('.', dotIndex + 1)
+            }
         }
 
-        return false
+        if (whitelistCache.size >= 512) {
+            whitelistCache.clear()
+        }
+        whitelistCache[host] = result
+        return result
     }
 
     fun toggleDomainWhitelist(urlOrDomain: String) {
-        val host = try {
-            if (urlOrDomain.startsWith("http://") || urlOrDomain.startsWith("https://")) {
-                Uri.parse(urlOrDomain).host?.lowercase() ?: urlOrDomain.lowercase()
-            } else {
-                urlOrDomain.lowercase()
-            }
-        } catch (e: Exception) {
-            urlOrDomain.lowercase()
-        }
+        val host = normalizeHost(urlOrDomain) ?: return
         if (host.isBlank()) return
 
         val currentWhitelist = _stats.value.whitelistedDomains.toMutableSet()
@@ -387,8 +384,7 @@ class AdBlockEngine(private val context: Context) {
 
         prefs.edit().putStringSet("whitelisted_domains", currentWhitelist).apply()
         _stats.value = _stats.value.copy(whitelistedDomains = currentWhitelist)
-        
-        // Hapus cache pemblokiran host karena status whitelist berubah
+        whitelistCache.clear()
         hostBlockCache.clear()
     }
 
@@ -658,16 +654,21 @@ class AdBlockEngine(private val context: Context) {
         val isWhitelisted = isDomainWhitelisted(pageUrl)
         
         webView.post {
-            if (!currentStats.isEnabled || isWhitelisted || !currentStats.isCosmeticFilteringEnabled) {
-                webView.evaluateJavascript(cleanupCosmeticJs, null)
-                return@post
-            }
+            try {
+                if (!currentStats.isEnabled || isWhitelisted || !currentStats.isCosmeticFilteringEnabled) {
+                    webView.evaluateJavascript(cleanupCosmeticJs, null)
+                    return@post
+                }
 
-            webView.evaluateJavascript(cachedCosmeticJs, null)
-            webView.evaluateJavascript(ANTI_ADBLOCK_BYPASS_SCRIPT, null)
-            
-            if (currentStats.isAntiFingerprintingEnabled) {
-                webView.evaluateJavascript(ANTI_FINGERPRINT_SCRIPT, null)
+                webView.evaluateJavascript(cachedCosmeticJs, null)
+                webView.evaluateJavascript(ANTI_ADBLOCK_BYPASS_SCRIPT, null)
+                
+                if (currentStats.isAntiFingerprintingEnabled) {
+                    webView.evaluateJavascript(ANTI_FINGERPRINT_SCRIPT, null)
+                }
+            } catch (e: Exception) {
+                // WebView may have been destroyed between post() scheduling and execution
+                Log.w("AdBlockEngine", "Failed to inject cosmetic blocking: ${e.message}")
             }
         }
     }
@@ -702,13 +703,12 @@ class AdBlockEngine(private val context: Context) {
                 val compiledSet = HashSet<String>(blockedDomains.size + newDomains.size)
                 compiledSet.addAll(staticBlockedDomains)
                 compiledSet.addAll(newDomains)
-                
-                synchronized(blockedDomains) {
+
+                synchronized(blockedDomainsLock) {
                     blockedDomains.clear()
                     blockedDomains.addAll(compiledSet)
                 }
 
-                // Bersihkan cache pencarian karena list berubah
                 hostBlockCache.clear()
 
                 val cloudFile = File(context.filesDir, "adblock_cloud.txt")

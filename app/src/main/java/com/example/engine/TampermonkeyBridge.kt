@@ -99,7 +99,7 @@ class TampermonkeyBridge(private val context: Context) {
 
     @JavascriptInterface
     fun GM_xmlhttpRequest_proxy(jsonDetails: String, scriptName: String, tabId: String): String {
-        val details = try { JSONObject(jsonDetails) } catch (e: Exception) { JSONObject() }
+        val details = try { JSONObject(jsonDetails) } catch (e: org.json.JSONException) { JSONObject() } catch (e: IllegalArgumentException) { JSONObject() }
         val requestId = details.optString("requestId").ifBlank { (System.currentTimeMillis().toString() + (0..999).random()) }
         val targetWebView = getWebViewForTab(tabId)
         if (targetWebView != null) {
@@ -150,22 +150,26 @@ class TampermonkeyBridge(private val context: Context) {
                     
                     android.os.Handler(android.os.Looper.getMainLooper()).post {
                         val finalWv = xhrCallbacks[requestId]?.get()
-                        val js = "if(window._gm_xhr_callbacks && window._gm_xhr_callbacks['$requestId']) { window._gm_xhr_callbacks['$requestId'](${result}); delete window._gm_xhr_callbacks['$requestId']; }"
-                        finalWv?.evaluateJavascript(js, null)
+                        if (finalWv != null) {
+                            try {
+                                val js = "if(window._gm_xhr_callbacks && window._gm_xhr_callbacks['$requestId']) { window._gm_xhr_callbacks['$requestId'](${result}); delete window._gm_xhr_callbacks['$requestId']; }"
+                                finalWv.evaluateJavascript(js, null)
+                            } catch (e: Exception) {
+                                // WebView may have been destroyed between null check and execution
+                                addLog("WARN", "TampermonkeyBridge", "WebView destroyed before callback: ${e.message}")
+                            }
+                        }
                         xhrCallbacks.remove(requestId)
                     }
+                } catch (e: java.io.IOException) {
+                    addLog("ERROR", scriptName, "GM_xmlhttpRequest network error: ${e.message}")
+                    handleXhrError(requestId, "Network error: ${e.message}")
+                } catch (e: java.net.MalformedURLException) {
+                    addLog("ERROR", scriptName, "GM_xmlhttpRequest invalid URL: ${e.message}")
+                    handleXhrError(requestId, "Invalid URL: ${e.message}")
                 } catch (e: Exception) {
                     addLog("ERROR", scriptName, "GM_xmlhttpRequest failed: ${e.message}")
-                    android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        val errorJson = JSONObject().apply {
-                            put("status", 0)
-                            put("error", e.message)
-                        }
-                        val finalWv = xhrCallbacks[requestId]?.get()
-                        val js = "if(window._gm_xhr_callbacks && window._gm_xhr_callbacks['$requestId']) { window._gm_xhr_callbacks['$requestId'](${errorJson}); delete window._gm_xhr_callbacks['$requestId']; }"
-                        finalWv?.evaluateJavascript(js, null)
-                        xhrCallbacks.remove(requestId)
-                    }
+                    handleXhrError(requestId, "Request failed: ${e.message}")
                 }
             }
         }
@@ -209,6 +213,10 @@ class TampermonkeyBridge(private val context: Context) {
                 com.example.util.StorageHelper.finalizeDownload(context, uriString)
                 
                 Toast.makeText(context, "Blob disimpan di folder Downloads", Toast.LENGTH_LONG).show()
+            } catch (e: java.io.IOException) {
+                Toast.makeText(context, "Gagal menyimpan file: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            } catch (e: IllegalArgumentException) {
+                Toast.makeText(context, "Format base64 tidak valid: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 Toast.makeText(context, "Gagal mengunduh Blob: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
                 e.printStackTrace()
@@ -229,6 +237,26 @@ class TampermonkeyBridge(private val context: Context) {
             message = message
         )
         _logs.value = (listOf(newEntry) + _logs.value).take(150)
+    }
+
+    private fun handleXhrError(requestId: String, errorMessage: String) {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            val errorJson = JSONObject().apply {
+                put("status", 0)
+                put("error", errorMessage)
+            }
+            val finalWv = xhrCallbacks[requestId]?.get()
+            if (finalWv != null) {
+                try {
+                    val js = "if(window._gm_xhr_callbacks && window._gm_xhr_callbacks['$requestId']) { window._gm_xhr_callbacks['$requestId']($errorJson); delete window._gm_xhr_callbacks['$requestId']; }"
+                    finalWv.evaluateJavascript(js, null)
+                } catch (e: Exception) {
+                    // WebView may have been destroyed between null check and execution
+                    addLog("WARN", "TampermonkeyBridge", "WebView destroyed before error callback: ${e.message}")
+                }
+            }
+            xhrCallbacks.remove(requestId)
+        }
     }
 
     companion object {

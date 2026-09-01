@@ -2,6 +2,7 @@ package com.example.data.model
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import kotlinx.serialization.Serializable
 
 @Entity(
     tableName = "bookmarks",
@@ -68,6 +69,7 @@ data class TabSession(
     val sortOrder: Int
 )
 
+@Serializable
 data class ShortcutItem(
     val title: String,
     val url: String,

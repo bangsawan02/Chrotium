@@ -6,7 +6,10 @@ import android.webkit.CookieManager
 import android.webkit.WebStorage
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.BrowserSettingsDataStore
 import com.example.data.db.AppDatabase
+import com.example.data.defaultShortcuts
+import com.example.data.deserializeShortcuts
 import com.example.data.model.Bookmark
 import com.example.data.model.DownloadItem
 import com.example.data.model.HistoryItem
@@ -81,6 +84,17 @@ data class BrowserUiState(
 
 class BrowserViewModel(application: Application) : AndroidViewModel(application) {
 
+    companion object {
+        internal fun shouldQuerySuggestions(query: String, isFocused: Boolean): Boolean {
+            val trimmed = query.trim()
+            return isFocused && trimmed.isNotBlank() && !trimmed.startsWith("about:", ignoreCase = true)
+        }
+
+        internal fun shouldSyncOmniboxFromPage(currentText: String, pageUrl: String, isFocused: Boolean): Boolean {
+            return !isFocused && currentText != pageUrl
+        }
+    }
+
     private val database by lazy { AppDatabase.getDatabase(application) }
     val repository by lazy { BrowserRepository(database) }
     val tampermonkeyBridge by lazy { TampermonkeyBridge(application) }
@@ -99,14 +113,16 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private var suggestionJob: Job? = null
+    private var suggestionRequestToken: Int = 0
+    private var focusRequestToken: Int = 0
 
+    private val browserSettings = BrowserSettingsDataStore(application)
     private val settingsPrefs = application.getSharedPreferences("crotium_browser_settings", Context.MODE_PRIVATE)
-
-    private val savedDarkTheme = settingsPrefs.getBoolean("pref_dark_theme", false)
-    private val savedQuickScroll = settingsPrefs.getBoolean("pref_quick_scroll", true)
-    private val savedSearchEngineName = settingsPrefs.getString("pref_search_engine", SearchEngine.DUCKDUCKGO.name)
+    private val savedDarkTheme = browserSettings.getDarkThemeSync(false)
+    private val savedQuickScroll = browserSettings.getQuickScrollSync(true)
+    private val savedSearchEngineName = browserSettings.getSearchEngineNameSync(SearchEngine.DUCKDUCKGO.name)
     private val savedSearchEngine = try {
-        SearchEngine.valueOf(savedSearchEngineName ?: SearchEngine.DUCKDUCKGO.name)
+        SearchEngine.valueOf(savedSearchEngineName)
     } catch (e: Exception) {
         SearchEngine.DUCKDUCKGO
     }
@@ -141,7 +157,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     val scriptLogs: StateFlow<List<ScriptLogEntry>> by lazy { tampermonkeyBridge.logs }
 
-    private val savedTranslateLangCode = settingsPrefs.getString("pref_translate_lang_code", "id") ?: "id"
+    private val savedTranslateLangCode = browserSettings.getTranslateLanguageCodeSync("id")
     private val initialTargetLanguage = TranslateEngine.getLanguageByCode(savedTranslateLangCode)
 
     private val _translationBarState = MutableStateFlow(
@@ -164,7 +180,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setTargetLanguage(language: TargetLanguage) {
-        settingsPrefs.edit().putString("pref_translate_lang_code", language.code).apply()
+        viewModelScope.launch {
+            browserSettings.setTranslateLanguageCode(language.code)
+        }
         _translationBarState.value = _translationBarState.value.copy(targetLanguage = language)
     }
 
@@ -286,7 +304,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun toggleQuickScroll() {
         val newValue = !_uiState.value.isQuickScrollEnabled
-        settingsPrefs.edit().putBoolean("pref_quick_scroll", newValue).apply()
+        viewModelScope.launch {
+            browserSettings.setQuickScrollEnabled(newValue)
+        }
         _uiState.value = _uiState.value.copy(isQuickScrollEnabled = newValue)
     }
 
@@ -368,7 +388,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
 
         if (targetTabId == _uiState.value.activeTabId) {
-            if (!_uiState.value.isOmniboxFocused && _uiState.value.omniboxText != url) {
+            if (shouldSyncOmniboxFromPage(_uiState.value.omniboxText, url, _uiState.value.isOmniboxFocused)) {
                 _uiState.value = _uiState.value.copy(omniboxText = url)
             }
             checkBookmarkStatus(url)
@@ -680,12 +700,16 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun toggleDarkTheme() {
         val newDarkTheme = !_uiState.value.isDarkTheme
-        settingsPrefs.edit().putBoolean("pref_dark_theme", newDarkTheme).apply()
+        viewModelScope.launch {
+            browserSettings.setDarkTheme(newDarkTheme)
+        }
         _uiState.value = _uiState.value.copy(isDarkTheme = newDarkTheme)
     }
 
     fun setSearchEngine(engine: SearchEngine) {
-        settingsPrefs.edit().putString("pref_search_engine", engine.name).apply()
+        viewModelScope.launch {
+            browserSettings.setSearchEngineName(engine.name)
+        }
         _uiState.value = _uiState.value.copy(searchEngine = engine)
     }
 
@@ -790,17 +814,25 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun setOmniboxText(text: String) {
         _uiState.value = _uiState.value.copy(omniboxText = text)
-        querySuggestions(text)
+        if (shouldQuerySuggestions(text, _uiState.value.isOmniboxFocused)) {
+            querySuggestions(text)
+        } else {
+            dismissSuggestions()
+        }
     }
 
     fun setOmniboxFocused(focused: Boolean) {
+        if (_uiState.value.isOmniboxFocused == focused) return
+
+        val token = ++focusRequestToken
         _uiState.value = _uiState.value.copy(isOmniboxFocused = focused)
-        if (focused && _uiState.value.omniboxText.isNotBlank()) {
+
+        if (focused && shouldQuerySuggestions(_uiState.value.omniboxText, true)) {
             querySuggestions(_uiState.value.omniboxText)
         } else if (!focused) {
-            // Beri sedikit jeda agar klik pada item saran tidak terpotong
             viewModelScope.launch {
                 delay(150)
+                if (token != focusRequestToken) return@launch
                 if (!_uiState.value.isOmniboxFocused) {
                     dismissSuggestions()
                 }
@@ -812,14 +844,27 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         val trimmed = query.trim()
         suggestionJob?.cancel()
 
-        if (trimmed.isBlank() || trimmed.startsWith("about:")) {
+        if (!shouldQuerySuggestions(trimmed, _uiState.value.isOmniboxFocused)) {
             _uiState.value = _uiState.value.copy(suggestions = emptyList(), showSuggestions = false)
             return
         }
 
+        val requestToken = ++suggestionRequestToken
         suggestionJob = viewModelScope.launch {
-            delay(180) // Debounce 180ms
+            delay(180)
+            if (requestToken != suggestionRequestToken) return@launch
+            if (!_uiState.value.isOmniboxFocused) {
+                _uiState.value = _uiState.value.copy(suggestions = emptyList(), showSuggestions = false)
+                return@launch
+            }
+
             val results = suggestionEngine.getSuggestions(trimmed)
+            if (requestToken != suggestionRequestToken) return@launch
+            if (!_uiState.value.isOmniboxFocused) {
+                _uiState.value = _uiState.value.copy(suggestions = emptyList(), showSuggestions = false)
+                return@launch
+            }
+
             _uiState.value = _uiState.value.copy(
                 suggestions = results,
                 showSuggestions = results.isNotEmpty()
@@ -847,7 +892,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun dismissSuggestions() {
         suggestionJob?.cancel()
-        _uiState.value = _uiState.value.copy(showSuggestions = false)
+        suggestionRequestToken += 1
+        _uiState.value = _uiState.value.copy(suggestions = emptyList(), showSuggestions = false)
     }
 
     private fun checkBookmarkStatus(url: String) {
@@ -875,37 +921,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun loadShortcuts(): List<ShortcutItem> {
-        val jsonStr = settingsPrefs.getString("pref_shortcuts_json", null)
-        if (jsonStr.isNullOrEmpty()) {
-            return listOf(
-                ShortcutItem("DuckDuckGo", "https://duckduckgo.com", "#FF006D3B", "D"),
-                ShortcutItem("Wikipedia", "https://id.wikipedia.org", "#FF006874", "W"),
-                ShortcutItem("GitHub", "https://github.com", "#FF334155", "G"),
-                ShortcutItem("Reddit", "https://www.reddit.com", "#FFFF5722", "R"),
-                ShortcutItem("GreasyFork", "https://greasyfork.org/en/scripts", "#FFFFB300", "GF"),
-                ShortcutItem("HackerNews", "https://news.ycombinator.com", "#FFFF6600", "Y"),
-                ShortcutItem("MDN Web", "https://developer.mozilla.org", "#FF0284C7", "M"),
-                ShortcutItem("YouTube", "https://m.youtube.com", "#FFFF0000", "YT")
-            )
-        }
-        val list = mutableListOf<ShortcutItem>()
-        try {
-            val array = org.json.JSONArray(jsonStr)
-            for (i in 0 until array.length()) {
-                val obj = array.getJSONObject(i)
-                list.add(
-                    ShortcutItem(
-                        title = obj.getString("title"),
-                        url = obj.getString("url"),
-                        iconColorHex = obj.getString("iconColorHex"),
-                        initial = obj.getString("initial")
-                    )
-                )
-            }
-        } catch (e: Exception) {
-            // ignore
-        }
-        return list
+        return browserSettings.getShortcutsSync()
     }
 
     fun addShortcut(title: String, url: String) {
@@ -926,32 +942,17 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         val newItem = ShortcutItem(title, formattedUrl, randomColor, initial)
         val updatedList = _uiState.value.shortcuts + newItem
         
-        val array = org.json.JSONArray()
-        for (item in updatedList) {
-            val obj = org.json.JSONObject()
-            obj.put("title", item.title)
-            obj.put("url", item.url)
-            obj.put("iconColorHex", item.iconColorHex)
-            obj.put("initial", item.initial)
-            array.put(obj)
+        viewModelScope.launch {
+            browserSettings.setShortcuts(updatedList)
         }
-        settingsPrefs.edit().putString("pref_shortcuts_json", array.toString()).apply()
         _uiState.value = _uiState.value.copy(shortcuts = updatedList)
     }
 
     fun deleteShortcut(shortcut: ShortcutItem) {
         val updatedList = _uiState.value.shortcuts.filter { it.url != shortcut.url || it.title != shortcut.title }
-        
-        val array = org.json.JSONArray()
-        for (item in updatedList) {
-            val obj = org.json.JSONObject()
-            obj.put("title", item.title)
-            obj.put("url", item.url)
-            obj.put("iconColorHex", item.iconColorHex)
-            obj.put("initial", item.initial)
-            array.put(obj)
+        viewModelScope.launch {
+            browserSettings.setShortcuts(updatedList)
         }
-        settingsPrefs.edit().putString("pref_shortcuts_json", array.toString()).apply()
         _uiState.value = _uiState.value.copy(shortcuts = updatedList)
     }
 
@@ -970,16 +971,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             }
         }
 
-        val array = org.json.JSONArray()
-        for (item in updatedList) {
-            val obj = org.json.JSONObject()
-            obj.put("title", item.title)
-            obj.put("url", item.url)
-            obj.put("iconColorHex", item.iconColorHex)
-            obj.put("initial", item.initial)
-            array.put(obj)
+        viewModelScope.launch {
+            browserSettings.setShortcuts(updatedList)
         }
-        settingsPrefs.edit().putString("pref_shortcuts_json", array.toString()).apply()
         _uiState.value = _uiState.value.copy(shortcuts = updatedList)
     }
 

@@ -2,8 +2,11 @@ package com.example
 
 import com.example.data.model.TabItem
 import com.example.ui.BrowserUiState
+import com.example.ui.BrowserViewModel
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.UUID
 
@@ -87,5 +90,20 @@ class TabsLogicTest {
         assertEquals("Tab 1", updatedState.tabs.find { it.id == "1" }?.title)
         assertEquals("GitHub - Home", updatedState.tabs.find { it.id == "2" }?.title)
         assertEquals("1", updatedState.activeTabId)
+    }
+
+    @Test
+    fun testShouldQuerySuggestionsOnlyWhenFocusedAndNotAbout() {
+        assertTrue(BrowserViewModel.shouldQuerySuggestions("github.com", true))
+        assertFalse(BrowserViewModel.shouldQuerySuggestions("   ", true))
+        assertFalse(BrowserViewModel.shouldQuerySuggestions("about:blank", true))
+        assertFalse(BrowserViewModel.shouldQuerySuggestions("github.com", false))
+    }
+
+    @Test
+    fun testShouldSyncOmniboxFromPageOnlyWhenNotFocused() {
+        assertTrue(BrowserViewModel.shouldSyncOmniboxFromPage("google.com", "https://example.com", false))
+        assertFalse(BrowserViewModel.shouldSyncOmniboxFromPage("https://example.com", "https://example.com", false))
+        assertFalse(BrowserViewModel.shouldSyncOmniboxFromPage("google.com", "https://example.com", true))
     }
 }

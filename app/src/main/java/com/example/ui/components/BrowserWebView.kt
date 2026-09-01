@@ -75,6 +75,14 @@ private data class JsAlertData(val message: String, val result: JsResult)
 private data class JsConfirmData(val message: String, val result: JsResult)
 private data class JsPromptData(val message: String, val defaultValue: String, val result: JsPromptResult)
 
+private fun shouldInjectHeavyPageOptimizations(url: String): Boolean {
+    val normalized = url.lowercase()
+    return normalized.contains("youtube.com") ||
+        normalized.contains("youtu.be") ||
+        normalized.contains("ai.studio") ||
+        normalized.contains("aistudio.google.com")
+}
+
 class BackgroundPlayWebView(context: Context) : WebView(context) {
     var isBackgroundPlayEnabled: Boolean = true
     var isMediaPlaying: Boolean = false
@@ -1579,6 +1587,9 @@ private fun injectPageEnhancements(
     isDesktopMode: Boolean,
     adBlockEngine: com.example.engine.AdBlockEngine
 ) {
+    val normalizedUrl = safeUrl.lowercase()
+    if (wv.tag as? String == normalizedUrl) return
+
     // Disable smooth scrolling everywhere
     wv.evaluateJavascript(com.example.engine.WebConfig.DISABLE_SMOOTH_SCROLLING_SCRIPT, null)
 
@@ -1588,17 +1599,20 @@ private fun injectPageEnhancements(
         wv.evaluateJavascript(com.example.engine.WebConfig.BACKGROUND_PLAY_SCRIPT, null)
         wv.evaluateJavascript(com.example.engine.WebConfig.ANGULAR_SPA_OPTIMIZATION_SCRIPT, null)
         wv.evaluateJavascript(com.example.engine.WebConfig.GLOBAL_VIDEO_PERFORMANCE_SCRIPT, null)
-        wv.evaluateJavascript(com.example.engine.WebConfig.INPUT_SCROLL_FOCUS_SCRIPT, null)
         wv.evaluateJavascript(com.example.engine.WebConfig.DOWNLOAD_LINK_INTERCEPTOR_SCRIPT, null)
 
-        if (safeUrl.contains("youtube.com") || safeUrl.contains("youtu.be")) {
+        if (shouldInjectHeavyPageOptimizations(normalizedUrl)) {
+            wv.evaluateJavascript(com.example.engine.WebConfig.INPUT_SCROLL_FOCUS_SCRIPT, null)
+        }
+
+        if (normalizedUrl.contains("youtube.com") || normalizedUrl.contains("youtu.be")) {
             wv.evaluateJavascript(com.example.engine.WebConfig.YOUTUBE_PERFORMANCE_SCRIPT, null)
             wv.evaluateJavascript(com.example.engine.WebConfig.YOUTUBE_AD_BYPASS_SCRIPT, null)
             if (isH264ifyEnabled) {
                 wv.evaluateJavascript(com.example.engine.WebConfig.YOUTUBE_H264IFY_SCRIPT, null)
             }
         }
-        if (safeUrl.contains("ai.studio") || safeUrl.contains("aistudio.google.com")) {
+        if (normalizedUrl.contains("ai.studio") || normalizedUrl.contains("aistudio.google.com")) {
             wv.evaluateJavascript(com.example.engine.WebConfig.AI_STUDIO_OPTIMIZATION_SCRIPT, null)
         }
         if (isDesktopMode) {
@@ -1606,5 +1620,7 @@ private fun injectPageEnhancements(
         } else {
             wv.evaluateJavascript(com.example.engine.WebConfig.MOBILE_VIEWPORT_SCRIPT, null)
         }
+
+        wv.tag = normalizedUrl
     }
 }
