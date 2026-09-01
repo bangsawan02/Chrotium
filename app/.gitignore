@@ -1,0 +1,10 @@
+/build
+/app/build
+.build-outputs/
+release/
+Release/
+*.apk
+.gradle/
+upload_release.py
+
+
