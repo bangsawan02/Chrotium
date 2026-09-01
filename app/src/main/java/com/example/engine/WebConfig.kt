@@ -1040,34 +1040,81 @@ object WebConfig {
     """.trimIndent()
 
     /**
-     * Script untuk memastikan elemen input teks / form terlihat jelas saat pengguna mengetik,
-     * tanpa menyebabkan layout jumping atau lag pada aplikasi web modern (seperti ai.studio).
+     * Script untuk memastikan fokus input tetap stabil dan anti-flicker saat keyboard virtual muncul/hilang
+     * pada SPA seperti Google AI Studio (Monaco Editor / prompt box) dan YouTube (komentar / chat).
      */
     val INPUT_SCROLL_FOCUS_SCRIPT = """
         (function() {
             if (window.__chrotium_input_scroll_injected) return;
             window.__chrotium_input_scroll_injected = true;
 
+            var lastActiveEditable = null;
+            var restoreFocusTimer = null;
+
+            function isEditable(el) {
+                if (!el) return false;
+                var tag = el.tagName;
+                return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable || 
+                       el.getAttribute('role') === 'textbox' || 
+                       (el.classList && (el.classList.contains('inputarea') || el.classList.contains('monaco-editor')));
+            }
+
+            // Simpan referensi elemen input yang sedang aktif
+            document.addEventListener('focusin', function(e) {
+                if (isEditable(e.target)) {
+                    lastActiveEditable = e.target;
+                }
+            }, true);
+
+            // Jaga fokus agar tidak hilang/flicker saat window resize terjadi karena keyboard Android muncul
+            window.addEventListener('resize', function() {
+                var active = document.activeElement || lastActiveEditable;
+                if (active && isEditable(active)) {
+                    if (restoreFocusTimer) clearTimeout(restoreFocusTimer);
+                    restoreFocusTimer = setTimeout(function() {
+                        try {
+                            if (document.activeElement !== active && isEditable(active)) {
+                                active.focus({ preventScroll: true });
+                            }
+                        } catch(err) {}
+                    }, 40);
+                }
+            }, { passive: true });
+
+            // Pastikan sentuhan pada elemen input langsung mempertahankan fokus
+            document.addEventListener('touchstart', function(e) {
+                var target = e.target;
+                if (isEditable(target)) {
+                    lastActiveEditable = target;
+                } else if (target && target.closest) {
+                    var closestEditable = target.closest('input, textarea, [contenteditable="true"], [role="textbox"], .monaco-editor');
+                    if (closestEditable) {
+                        lastActiveEditable = closestEditable;
+                    }
+                }
+            }, { passive: true });
+
+            // Smooth viewport visibility scroll hanya jika input berada benar-benar di luar viewport
             var scrollTimeout = null;
             function scrollActiveIntoView(target) {
                 if (scrollTimeout) clearTimeout(scrollTimeout);
                 scrollTimeout = setTimeout(function() {
                     try {
                         var el = target || document.activeElement;
-                        if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) {
+                        // Monaco editor dan inputarea mengatur scroll internalnya sendiri
+                        if (el && isEditable(el) && !el.classList.contains('inputarea')) {
                             var rect = el.getBoundingClientRect();
                             var vh = window.innerHeight || document.documentElement.clientHeight;
-                            // Hanya scroll jika input benar-benar tertutup di luar layar
                             if (rect.bottom > vh || rect.top < 0) {
                                 el.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'nearest' });
                             }
                         }
                     } catch(e) {}
-                }, 100);
+                }, 120);
             }
 
             document.addEventListener('focusin', function(e) {
-                if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) {
+                if (isEditable(e.target)) {
                     scrollActiveIntoView(e.target);
                 }
             }, true);

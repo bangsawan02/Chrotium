@@ -339,6 +339,18 @@ fun BrowserWebView(
             isNestedScrollingEnabled = true
             isFocusable = true
             isFocusableInTouchMode = true
+            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+            requestFocusFromTouch()
+
+            // Ensure touching the webview requests focus reliably without losing software keyboard
+            setOnTouchListener { v, event ->
+                if (event.action == MotionEvent.ACTION_DOWN) {
+                    if (!v.hasFocus()) {
+                        v.requestFocus()
+                    }
+                }
+                false
+            }
             
             // Aktifkan pre-rasterisasi GPU untuk mempercepat rendering saat scroll 
             // meniru arsitektur Google Chrome (mengorbankan sedikit RAM untuk FPS tinggi).
@@ -1192,6 +1204,9 @@ fun BrowserWebView(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
+            isFocusable = false
+            isFocusableInTouchMode = false
+            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
             setColorSchemeColors(primaryColor)
             setProgressBackgroundColorSchemeColor(backgroundColor)
             
@@ -1298,12 +1313,7 @@ fun BrowserWebView(
             update = { view ->
                 view.visibility = if (isVisible) android.view.View.VISIBLE else android.view.View.GONE
             },
-            modifier = Modifier
-                .fillMaxSize()
-                .onSizeChanged {
-                    swipeRefreshLayout.requestLayout()
-                    webView.requestLayout()
-                }
+            modifier = Modifier.fillMaxSize()
         )
 
         if (customView != null) {

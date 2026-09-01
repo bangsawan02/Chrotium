@@ -176,7 +176,6 @@ fun BrowserMainScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
-                .imePadding()
                 .then(if (!uiState.isFullscreen) Modifier.padding(innerPadding) else Modifier)
         ) {
             if (activeTab == null || activeTab.url == "about:blank") {
