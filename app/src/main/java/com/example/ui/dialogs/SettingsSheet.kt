@@ -81,6 +81,7 @@ fun SettingsSheet(
     onOpenDownloads: () -> Unit = {},
     onOpenAdBlock: () -> Unit = {},
     onOpenTranslate: () -> Unit = {},
+    onPrintPdf: () -> Unit = {},
     onSelectSearchEngine: (SearchEngine) -> Unit,
     onClearBrowsingData: () -> Unit,
     onDismiss: () -> Unit,
@@ -518,6 +519,41 @@ fun SettingsSheet(
                                     )
                                 }
                                 Text("Terjemahkan >", color = MaterialTheme.colorScheme.secondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            // Print / Save to PDF entry
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onDismiss()
+                                        onPrintPdf()
+                                    }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Bookmark,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = "Cetak / Simpan ke PDF",
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Text("Cetak >", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }

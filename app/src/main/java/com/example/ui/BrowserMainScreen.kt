@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.ime
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -77,6 +78,7 @@ fun BrowserMainScreen(
     val adBlockStats by viewModel.adBlockStats.collectAsStateWithLifecycle()
     val translationBarState by viewModel.translationBarState.collectAsStateWithLifecycle()
 
+    val context = LocalContext.current
     var activeWebView by remember { mutableStateOf<WebView?>(null) }
 
     val activeTab = uiState.activeTab
@@ -148,6 +150,11 @@ fun BrowserMainScreen(
                             },
                             onScriptsClick = { viewModel.showSheet(ActiveSheet.SCRIPTS_MANAGER) },
                             onAdBlockClick = { viewModel.showSheet(ActiveSheet.ADBLOCK) },
+                            onSecurityIconClick = {
+                                if (activeTab?.url != "about:blank" && !activeTab?.url.isNullOrBlank()) {
+                                    viewModel.showSheet(ActiveSheet.SITE_SETTINGS)
+                                }
+                            },
                             onFocusChange = { viewModel.setOmniboxFocused(it) }
                         )
                     }
@@ -177,6 +184,7 @@ fun BrowserMainScreen(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
                 .then(if (!uiState.isFullscreen) Modifier.padding(innerPadding) else Modifier)
+                .imePadding()
         ) {
             if (activeTab == null || activeTab.url == "about:blank") {
                 HomeDashboard(
@@ -404,11 +412,42 @@ fun BrowserMainScreen(
                 onOpenDownloads = { viewModel.showSheet(ActiveSheet.DOWNLOADS) },
                 onOpenAdBlock = { viewModel.showSheet(ActiveSheet.ADBLOCK) },
                 onOpenTranslate = { viewModel.showSheet(ActiveSheet.TRANSLATE) },
+                onPrintPdf = {
+                    viewModel.printCurrentPage(context, activeWebView)
+                },
                 onSelectSearchEngine = { viewModel.setSearchEngine(it) },
                 onClearBrowsingData = { 
                     com.example.engine.DiskCacheManager.clearCache()
                     activeWebView?.clearCache(true)
                     viewModel.clearBrowsingData() 
+                },
+                onDismiss = { viewModel.hideSheet() }
+            )
+        }
+        ActiveSheet.SITE_SETTINGS -> {
+            val isWhitelisted = activeTab?.url?.let { viewModel.adBlockEngine.isDomainWhitelisted(it) } ?: false
+            com.example.ui.dialogs.SiteSettingsSheet(
+                url = activeTab?.url ?: "",
+                title = activeTab?.title ?: "",
+                isDesktopMode = activeTab?.isDesktopMode ?: false,
+                isAdBlockWhitelisted = isWhitelisted,
+                isDarkTheme = uiState.isDarkTheme,
+                isDevToolsEnabled = activeTab?.isDevToolsEnabled ?: false,
+                onToggleDesktopMode = {
+                    viewModel.toggleDesktopMode()
+                    activeWebView?.reload()
+                },
+                onToggleAdBlockWhitelist = {
+                    viewModel.toggleWhitelistForCurrentSite()
+                    activeWebView?.reload()
+                },
+                onToggleDarkTheme = { viewModel.toggleDarkTheme() },
+                onToggleDevTools = { viewModel.toggleDevTools() },
+                onPrintPdf = {
+                    viewModel.printCurrentPage(context, activeWebView)
+                },
+                onClearSiteData = { host ->
+                    viewModel.clearSiteData(host, activeWebView)
                 },
                 onDismiss = { viewModel.hideSheet() }
             )

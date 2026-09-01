@@ -25,9 +25,6 @@ class TampermonkeyBridge(private val context: Context) {
     // Multi-tab support: Map of tabId to WebView reference
     private val webViews = ConcurrentHashMap<String, java.lang.ref.WeakReference<android.webkit.WebView>>()
 
-    @Deprecated("Use registerWebView(tabId, webView) instead")
-    var webView: android.webkit.WebView? = null
-
     fun registerWebView(tabId: String, wv: android.webkit.WebView) {
         webViews[tabId] = java.lang.ref.WeakReference(wv)
     }

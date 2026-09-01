@@ -349,6 +349,11 @@ fun BrowserWebView(
             isFocusableInTouchMode = true
             descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
             requestFocusFromTouch()
+            setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
+            isVerticalScrollBarEnabled = true
+            isHorizontalScrollBarEnabled = true
+            isScrollbarFadingEnabled = true
+            overScrollMode = android.view.View.OVER_SCROLL_IF_CONTENT_SCROLLS
 
             // Ensure touching the webview requests focus reliably without losing software keyboard
             setOnTouchListener { v, event ->
@@ -366,20 +371,14 @@ fun BrowserWebView(
             settings.offscreenPreRaster = true
             
             com.example.engine.WebConfig.configureWebSettings(settings, isDarkTheme)
-            @Suppress("DEPRECATION")
-            settings.setRenderPriority(android.webkit.WebSettings.RenderPriority.HIGH)
 
-            // Renderer Priority Policy (Memastikan proses render WebView tidak ditahan oleh OS)
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                try {
-                    setRendererPriorityPolicy(
-                        android.webkit.WebView.RENDERER_PRIORITY_IMPORTANT,
-                        true // Hemat daya/memori saat halaman di background
-                    )
-                } catch (e: Exception) {
-                    // Ignore if not supported
-                }
-            }
+            // Renderer Priority Policy (Memastikan proses render WebView diprioritaskan secara maksimal oleh OS)
+            try {
+                setRendererPriorityPolicy(
+                    android.webkit.WebView.RENDERER_PRIORITY_IMPORTANT,
+                    false // Prioritas penuh tanpa penahanan saat halaman me-render animasi/script berat
+                )
+            } catch (_: Exception) {}
             settings.userAgentString = com.example.engine.WebConfig.getCustomUserAgent(tab.url, tab.isDesktopMode)
             settings.setSupportMultipleWindows(true)
             settings.javaScriptCanOpenWindowsAutomatically = true
@@ -860,17 +859,13 @@ fun BrowserWebView(
                         settings.userAgentString = view.settings.userAgentString
                         com.example.engine.CookieHelper.configureWebViewCookies(this, true)
 
-                        // Renderer Priority Policy (Memastikan proses render WebView tidak ditahan oleh OS)
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                            try {
-                                setRendererPriorityPolicy(
-                                    android.webkit.WebView.RENDERER_PRIORITY_IMPORTANT,
-                                    true // Hemat daya/memori saat halaman di background
-                                )
-                            } catch (e: Exception) {
-                                // Ignore if not supported
-                            }
-                        }
+                        // Renderer Priority Policy (Memastikan proses render WebView diprioritaskan oleh OS)
+                        try {
+                            setRendererPriorityPolicy(
+                                android.webkit.WebView.RENDERER_PRIORITY_IMPORTANT,
+                                false
+                            )
+                        } catch (_: Exception) {}
 
                         // Set Downloader Listener untuk popup webview
                         setDownloadListener { url, userAgent, contentDisposition, mimetype, _ ->
@@ -1590,8 +1585,9 @@ private fun injectPageEnhancements(
     val normalizedUrl = safeUrl.lowercase()
     if (wv.tag as? String == normalizedUrl) return
 
-    // Disable smooth scrolling everywhere
+    // Disable smooth scrolling everywhere & activate GPU subpixel rendering
     wv.evaluateJavascript(com.example.engine.WebConfig.DISABLE_SMOOTH_SCROLLING_SCRIPT, null)
+    wv.evaluateJavascript(com.example.engine.WebConfig.GPU_RENDER_ACCELERATION_SCRIPT, null)
 
     if (!isAuth) {
         injectColorSchemeScript(wv, isDarkTheme)

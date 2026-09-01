@@ -73,6 +73,7 @@ fun Omnibox(
     onRefresh: () -> Unit,
     onScriptsClick: () -> Unit,
     onAdBlockClick: () -> Unit = {},
+    onSecurityIconClick: () -> Unit = {},
     onFocusChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -127,14 +128,22 @@ fun Omnibox(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Security / Protocol Icon
-                    Icon(
-                        imageVector = if (isHttps) Icons.Default.Lock else Icons.Default.Public,
-                        contentDescription = if (isHttps) "Koneksi Aman SSL" else "Web",
-                        tint = if (isHttps) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.size(16.dp)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .clickable(onClick = onSecurityIconClick),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isHttps) Icons.Default.Lock else Icons.Default.Public,
+                            contentDescription = if (isHttps) "Koneksi Aman SSL" else "Web",
+                            tint = if (isHttps) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
 
                     // URL / Search Input Field
                     Box(

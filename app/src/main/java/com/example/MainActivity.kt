@@ -27,50 +27,48 @@ class MainActivity : ComponentActivity() {
       android.view.WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
     )
 
+    // Maximize display refresh rate (90Hz / 120Hz / 144Hz) for highest rendering fluidity
+    try {
+      val display = this.display
+      val maxMode = display?.supportedModes?.maxByOrNull { it.refreshRate }
+      if (maxMode != null && maxMode.refreshRate > 60f) {
+        val lp = window.attributes
+        lp.preferredDisplayModeId = maxMode.modeId
+        window.attributes = lp
+      }
+    } catch (_: Exception) {}
+
     // Initialize full cookie and 3rd-party cookie policy globally
     com.example.engine.CookieHelper.initializeGlobalCookiePolicy()
 
     // Initialize Safe Browsing API
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-      android.webkit.WebView.startSafeBrowsing(this.applicationContext) { success ->
-        android.util.Log.i("Chrotium", "Safe Browsing Initialized: $success")
-      }
+    android.webkit.WebView.startSafeBrowsing(this.applicationContext) { success ->
+      android.util.Log.i("Chrotium", "Safe Browsing Initialized: $success")
     }
 
     // Configure ServiceWorkerController to intercept and block background trackers
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-      val swController = android.webkit.ServiceWorkerController.getInstance()
-      val adBlockEngine = com.example.engine.AdBlockEngine(this)
-      swController.setServiceWorkerClient(object : android.webkit.ServiceWorkerClient() {
-        override fun shouldInterceptRequest(request: android.webkit.WebResourceRequest): android.webkit.WebResourceResponse? {
-          // Serve from disk cache if possible
-          val cachedResponse = com.example.engine.DiskCacheManager.shouldInterceptRequest(request)
-          if (cachedResponse != null) return cachedResponse
+    val swController = android.webkit.ServiceWorkerController.getInstance()
+    val adBlockEngine = com.example.engine.AdBlockEngine(this)
+    swController.setServiceWorkerClient(object : android.webkit.ServiceWorkerClient() {
+      override fun shouldInterceptRequest(request: android.webkit.WebResourceRequest): android.webkit.WebResourceResponse? {
+        // Serve from disk cache if possible
+        val cachedResponse = com.example.engine.DiskCacheManager.shouldInterceptRequest(request)
+        if (cachedResponse != null) return cachedResponse
 
-          // Content blocker for ads and tracking domains in Service Workers
-          if (adBlockEngine.shouldBlockRequest(request, null)) {
-            return adBlockEngine.createEmptyResourceResponse()
-          }
-          return super.shouldInterceptRequest(request)
+        // Content blocker for ads and tracking domains in Service Workers
+        if (adBlockEngine.shouldBlockRequest(request, null)) {
+          return adBlockEngine.createEmptyResourceResponse()
         }
-      })
-    }
+        return super.shouldInterceptRequest(request)
+      }
+    })
+
+    // Ensure all Chromium WebView cache & code cache directories exist to prevent SimpleCache ENOENT index errors
+    com.example.engine.WebViewCacheHelper.ensureCacheDirectories(this)
 
     // Pre-warm DNS & network connections asynchronously
     com.example.engine.WebConfig.warmUpDnsAndNetwork()
     com.example.engine.DiskCacheManager.init(this)
-
-    // Pre-warm the WebView engine on the main thread after the initial layout pass
-    window.decorView.post {
-      try {
-        val dummy = android.webkit.WebView(this)
-        dummy.loadUrl("about:blank")
-        dummy.destroy()
-        android.util.Log.i("Chrotium", "Chromium WebView engine successfully pre-warmed.")
-      } catch (e: Exception) {
-        // ignore
-      }
-    }
 
     // Schedule background periodic maintenance using WorkManager
     val maintenanceWorkRequest = androidx.work.PeriodicWorkRequestBuilder<com.example.worker.BrowserMaintenanceWorker>(
@@ -98,11 +96,7 @@ class MainActivity : ComponentActivity() {
     super.onTrimMemory(level)
     if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_MODERATE || level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE) {
       try {
-        // Triger pembersihan memori global pada engine Chromium WebView
-        val dummy = android.webkit.WebView(this)
-        @Suppress("DEPRECATION")
-        dummy.freeMemory()
-        dummy.destroy()
+        com.example.engine.WebViewCacheHelper.ensureCacheDirectories(this)
       } catch (e: Exception) {
         // safe ignore
       }

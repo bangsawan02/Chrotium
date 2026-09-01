@@ -42,16 +42,14 @@ class DownloadEngine(
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "Unduhan Chrotium"
-            val descriptionText = "Menampilkan progress pengunduhan file di Chrotium"
-            val importance = NotificationManager.IMPORTANCE_LOW
-            val channel = NotificationChannel(channelId, name, importance).apply {
-                description = descriptionText
-            }
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(channel)
+        val name = "Unduhan Chrotium"
+        val descriptionText = "Menampilkan progress pengunduhan file di Chrotium"
+        val importance = NotificationManager.IMPORTANCE_LOW
+        val channel = NotificationChannel(channelId, name, importance).apply {
+            description = descriptionText
         }
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.createNotificationChannel(channel)
     }
 
     private fun getDownloadsDirectory(): File {
@@ -319,11 +317,42 @@ class DownloadEngine(
                     database.downloadDao().updateDownloadProgress(downloadId, 1, totalBytes, totalBytes)
                     database.downloadDao().updateDownloadStatusWithUri(downloadId, 1, createdUri ?: "")
 
+                    val effectiveMime = if (chosenFile.name.endsWith(".apk", ignoreCase = true)) {
+                        "application/vnd.android.package-archive"
+                    } else {
+                        safeMimeType
+                    }
+
+                    try {
+                        val pendingUri: Uri = if (!createdUri.isNullOrBlank() && createdUri.startsWith("content://")) {
+                            Uri.parse(createdUri)
+                        } else {
+                            androidx.core.content.FileProvider.getUriForFile(
+                                context,
+                                "${context.packageName}.fileprovider",
+                                chosenFile
+                            )
+                        }
+                        val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(pendingUri, effectiveMime)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        val pendingIntent = android.app.PendingIntent.getActivity(
+                            context,
+                            downloadId.toInt(),
+                            viewIntent,
+                            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                        )
+                        notificationBuilder.setContentIntent(pendingIntent)
+                    } catch (_: Exception) {}
+
                     notificationBuilder
                         .setContentTitle("Selesai Mengunduh")
                         .setContentText(chosenFile.name)
                         .setSmallIcon(android.R.drawable.stat_sys_download_done)
                         .setOngoing(false)
+                        .setAutoCancel(true)
                         .setProgress(0, 0, false)
                     notificationManager.notify(downloadId.toInt(), notificationBuilder.build())
 
@@ -529,6 +558,6 @@ class DownloadEngine(
         if (bytes <= 0) return "0 B"
         val units = arrayOf("B", "KB", "MB", "GB", "TB")
         val digitGroups = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt()
-        return String.format("%.2f %s", bytes / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
+        return String.format(java.util.Locale.US, "%.2f %s", bytes / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
     }
 }

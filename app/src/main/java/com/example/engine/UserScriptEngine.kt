@@ -22,7 +22,7 @@ object UserScriptEngine {
                 '\t' -> sb.append("\\t")
                 else -> {
                     if (c.code < 0x20 || c.code in 0x7F..0x9F) {
-                        sb.append(String.format("\\u%04x", c.code))
+                        sb.append(String.format(java.util.Locale.ROOT, "\\u%04x", c.code))
                     } else {
                         sb.append(c)
                     }

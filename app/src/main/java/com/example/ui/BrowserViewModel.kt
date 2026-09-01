@@ -56,6 +56,7 @@ enum class ActiveSheet {
     SCRIPTS_MANAGER,
     BOOKMARKS_HISTORY,
     SETTINGS,
+    SITE_SETTINGS,
     DOWNLOADS,
     ADBLOCK,
     TRANSLATE
@@ -975,6 +976,49 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             browserSettings.setShortcuts(updatedList)
         }
         _uiState.value = _uiState.value.copy(shortcuts = updatedList)
+    }
+
+    fun clearSiteData(host: String, currentWebView: android.webkit.WebView?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                if (host.isNotBlank()) {
+                    // Hapus cookie terkait host
+                    val cookieManager = CookieManager.getInstance()
+                    val urlHttps = "https://$host"
+                    val urlHttp = "http://$host"
+                    val cookies = cookieManager.getCookie(urlHttps) ?: cookieManager.getCookie(urlHttp)
+                    if (!cookies.isNullOrBlank()) {
+                        val cookieParts = cookies.split(";")
+                        for (cookie in cookieParts) {
+                            val name = cookie.split("=").firstOrNull()?.trim()
+                            if (!name.isNullOrBlank()) {
+                                cookieManager.setCookie(urlHttps, "$name=; Expires=Thu, 01 Jan 1970 00:00:00 GMT")
+                                cookieManager.setCookie(urlHttp, "$name=; Expires=Thu, 01 Jan 1970 00:00:00 GMT")
+                            }
+                        }
+                        cookieManager.flush()
+                    }
+                    
+                    // Bersihkan WebStorage origin
+                    val webStorage = WebStorage.getInstance()
+                    webStorage.deleteOrigin("https://$host")
+                    webStorage.deleteOrigin("http://$host")
+                }
+            } catch (e: Exception) {
+                // safe ignore
+            }
+        }
+        currentWebView?.post {
+            try {
+                currentWebView.clearCache(true)
+                currentWebView.reload()
+            } catch (e: Exception) {}
+        }
+    }
+
+    fun printCurrentPage(context: Context, webView: android.webkit.WebView?) {
+        val title = _uiState.value.activeTab?.title ?: "WebPage"
+        com.example.util.PdfPrintHelper.printPageToPdf(context, webView, title)
     }
 
     fun onTrimMemory(level: Int) {

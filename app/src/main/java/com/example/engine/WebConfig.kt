@@ -292,16 +292,6 @@ object WebConfig {
                     window.__chrotium_is_background = true;
                     if (e) e.stopImmediatePropagation(); 
                 }, true);
-                window.addEventListener('blur', function(e) {
-                    window.__chrotium_is_background = true;
-                    if (e) e.stopImmediatePropagation();
-                }, true);
-                window.addEventListener('focusout', function(e) {
-                    if (window.__chrotium_is_background && e) e.stopImmediatePropagation();
-                }, true);
-                window.addEventListener('focus', function(e) {
-                    window.__chrotium_is_background = false;
-                }, true);
 
                 // 3. Ensure HTMLMediaElement.prototype.play resolves cleanly during YouTube Mix / Playlist auto-advance in background
                 var origPlay = HTMLMediaElement.prototype.play;
@@ -1338,6 +1328,34 @@ object WebConfig {
     """.trimIndent()
 
     /**
+     * Script akselerasi rendering hardware GPU & subpixel compositing:
+     * - Mengaktifkan GPU rasterization layer untuk rendering teks dan animasi yang lebih tajam & responsif.
+     * - Mengoptimalkan scrolling FPS pada halaman panjang/SPA kompleks menggunakan subpixel anti-aliasing.
+     */
+    val GPU_RENDER_ACCELERATION_SCRIPT = """
+        (function() {
+            if (window.__chrotium_gpu_render_active) return;
+            window.__chrotium_gpu_render_active = true;
+            try {
+                var style = document.createElement('style');
+                style.id = 'chrotium-gpu-render-enhancer';
+                style.textContent = `
+                    html, body {
+                        -webkit-font-smoothing: antialiased !important;
+                        -moz-osx-font-smoothing: grayscale !important;
+                        text-rendering: optimizeLegibility !important;
+                    }
+                    video, canvas {
+                        transform: translateZ(0) !important;
+                        backface-visibility: hidden !important;
+                    }
+                `;
+                (document.head || document.documentElement).appendChild(style);
+            } catch(e) {}
+        })();
+    """.trimIndent()
+
+    /**
      * Konfigurasi WebSettings performa tinggi & kompatibilitas penuh untuk semua framework modern.
      */
     fun configureWebSettings(settings: android.webkit.WebSettings, isDarkTheme: Boolean) {
@@ -1360,6 +1378,18 @@ object WebConfig {
         settings.safeBrowsingEnabled = true
         settings.javaScriptCanOpenWindowsAutomatically = true
         settings.setNeedInitialFocus(true)
+        settings.layoutAlgorithm = android.webkit.WebSettings.LayoutAlgorithm.NORMAL
+        settings.defaultTextEncodingName = "UTF-8"
+        settings.standardFontFamily = "sans-serif"
+        settings.sansSerifFontFamily = "sans-serif"
+        settings.serifFontFamily = "serif"
+        settings.fixedFontFamily = "monospace"
+        settings.cursiveFontFamily = "cursive"
+        settings.fantasyFontFamily = "fantasy"
+        settings.minimumFontSize = 1
+        settings.minimumLogicalFontSize = 1
+        settings.defaultFontSize = 16
+        settings.defaultFixedFontSize = 13
         @Suppress("DEPRECATION")
         settings.allowFileAccessFromFileURLs = true
         @Suppress("DEPRECATION")
