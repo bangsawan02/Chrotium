@@ -114,6 +114,23 @@ object WebConfig {
                 if (window.scrollTo) window.scrollTo = stripSmooth(window.scrollTo);
                 if (window.scroll) window.scroll = stripSmooth(window.scroll);
                 if (window.scrollBy) window.scrollBy = stripSmooth(window.scrollBy);
+
+                // 4. Pastikan form input, textarea, and contenteditable selalu auto-scroll ke area terlihat saat keyboard aktif
+                if (!window.__chrotium_focus_listener) {
+                    window.__chrotium_focus_listener = true;
+                    document.addEventListener('focusin', function(e) {
+                        var el = e.target;
+                        if (el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable)) {
+                            setTimeout(function() {
+                                try {
+                                    el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
+                                } catch(err) {
+                                    try { el.scrollIntoView(false); } catch(err2) {}
+                                }
+                            }, 100);
+                        }
+                    }, true);
+                }
             } catch(e) {}
         })();
     """.trimIndent()

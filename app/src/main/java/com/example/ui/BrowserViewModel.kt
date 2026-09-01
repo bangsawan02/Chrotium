@@ -1031,7 +1031,6 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     override fun onCleared() {
         super.onCleared()
-        com.example.engine.KtorNetworkEngine.close()
         try {
             suggestionEngine.close()
         } catch (e: Exception) {

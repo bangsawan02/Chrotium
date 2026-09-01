@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.imeAnimationTarget
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.Scaffold
@@ -161,8 +163,8 @@ fun BrowserMainScreen(
                 }
             },
             bottomBar = {
-                val isImeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
-                if (!uiState.isFullscreen && !uiState.isOmniboxFocused && !isImeVisible) {
+                val isImeOpen = WindowInsets.isImeVisible
+                if (!uiState.isFullscreen && !uiState.isOmniboxFocused && !isImeOpen) {
                     BottomNavBar(
                         modifier = Modifier.navigationBarsPadding(),
                         canGoBack = activeTab?.canGoBack ?: false,
@@ -179,12 +181,29 @@ fun BrowserMainScreen(
                 }
             }
         ) { innerPadding ->
+        val density = LocalDensity.current
+        val isImeOpen = WindowInsets.isImeVisible
+        val imeTargetBottomPx = WindowInsets.imeAnimationTarget.getBottom(density)
+        val imePaddingDp = remember(isImeOpen, imeTargetBottomPx) {
+            if (isImeOpen && imeTargetBottomPx > 0) {
+                with(density) { imeTargetBottomPx.toDp() }
+            } else {
+                androidx.compose.ui.unit.Dp.Unspecified
+            }
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
                 .then(if (!uiState.isFullscreen) Modifier.padding(innerPadding) else Modifier)
-                .imePadding()
+                .then(
+                    if (imePaddingDp != androidx.compose.ui.unit.Dp.Unspecified && imePaddingDp > androidx.compose.ui.unit.Dp.Hairline) {
+                        Modifier.padding(bottom = imePaddingDp)
+                    } else {
+                        Modifier
+                    }
+                )
         ) {
             if (activeTab == null || activeTab.url == "about:blank") {
                 HomeDashboard(
