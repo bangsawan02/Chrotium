@@ -55,11 +55,9 @@ fun SiteSettingsSheet(
     title: String,
     isDesktopMode: Boolean,
     isAdBlockWhitelisted: Boolean,
-    isDarkTheme: Boolean,
     isDevToolsEnabled: Boolean,
     onToggleDesktopMode: () -> Unit,
     onToggleAdBlockWhitelist: () -> Unit,
-    onToggleDarkTheme: () -> Unit,
     onToggleDevTools: () -> Unit,
     onPrintPdf: () -> Unit,
     onClearSiteData: (String) -> Unit,
@@ -171,16 +169,6 @@ fun SiteSettingsSheet(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
-            // Toggle Dark Theme
-            SiteSettingToggleItem(
-                icon = Icons.Default.DarkMode,
-                title = "Mode Gelap (Dark Theme)",
-                subtitle = "Terapkan kontras gelap & tema malam",
-                checked = isDarkTheme,
-                onCheckedChange = { onToggleDarkTheme() }
-            )
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
             // Toggle DevTools Inspector
             SiteSettingToggleItem(

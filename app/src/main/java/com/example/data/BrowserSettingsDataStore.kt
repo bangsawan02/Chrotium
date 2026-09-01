@@ -59,8 +59,6 @@ class BrowserSettingsDataStore(private val context: Context) {
     companion object {
         val AD_BLOCK_ENABLED = booleanPreferencesKey("ad_block_enabled")
         val DESKTOP_MODE_DEFAULT = booleanPreferencesKey("desktop_mode_default")
-        val DARK_THEME = booleanPreferencesKey("pref_dark_theme")
-        val QUICK_SCROLL = booleanPreferencesKey("pref_quick_scroll")
         val SEARCH_ENGINE = stringPreferencesKey("pref_search_engine")
         val TRANSLATE_LANGUAGE_CODE = stringPreferencesKey("pref_translate_lang_code")
         val SHORTCUTS_JSON = stringPreferencesKey("pref_shortcuts_json")
@@ -73,14 +71,6 @@ class BrowserSettingsDataStore(private val context: Context) {
 
     val isDesktopModeDefault: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[DESKTOP_MODE_DEFAULT] ?: legacyPrefs.getBoolean("desktop_mode_default", false)
-    }
-
-    val darkTheme: Flow<Boolean> = context.dataStore.data.map { preferences ->
-        preferences[DARK_THEME] ?: legacyPrefs.getBoolean("pref_dark_theme", false)
-    }
-
-    val quickScrollEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
-        preferences[QUICK_SCROLL] ?: legacyPrefs.getBoolean("pref_quick_scroll", true)
     }
 
     val searchEngineName: Flow<String> = context.dataStore.data.map { preferences ->
@@ -108,12 +98,6 @@ class BrowserSettingsDataStore(private val context: Context) {
         }
     }
 
-    fun getDarkThemeSync(default: Boolean = false): Boolean =
-        legacyPrefs.getBoolean("pref_dark_theme", default)
-
-    fun getQuickScrollSync(default: Boolean = true): Boolean =
-        legacyPrefs.getBoolean("pref_quick_scroll", default)
-
     fun getSearchEngineNameSync(default: String = "DUCKDUCKGO"): String =
         legacyPrefs.getString("pref_search_engine", default) ?: default
 
@@ -135,20 +119,6 @@ class BrowserSettingsDataStore(private val context: Context) {
             preferences[DESKTOP_MODE_DEFAULT] = enabled
         }
         legacyPrefs.edit().putBoolean("desktop_mode_default", enabled).apply()
-    }
-
-    suspend fun setDarkTheme(enabled: Boolean) {
-        context.dataStore.edit { preferences ->
-            preferences[DARK_THEME] = enabled
-        }
-        legacyPrefs.edit().putBoolean("pref_dark_theme", enabled).apply()
-    }
-
-    suspend fun setQuickScrollEnabled(enabled: Boolean) {
-        context.dataStore.edit { preferences ->
-            preferences[QUICK_SCROLL] = enabled
-        }
-        legacyPrefs.edit().putBoolean("pref_quick_scroll", enabled).apply()
     }
 
     suspend fun setSearchEngineName(name: String) {

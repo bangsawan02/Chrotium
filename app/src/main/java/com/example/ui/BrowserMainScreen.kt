@@ -118,7 +118,6 @@ fun BrowserMainScreen(
     }
 
     MyApplicationTheme(
-        darkTheme = uiState.isDarkTheme
     ) {
         Scaffold(
             modifier = modifier.fillMaxSize(),
@@ -230,7 +229,6 @@ fun BrowserMainScreen(
                             scripts = allScripts,
                             tampermonkeyBridge = viewModel.tampermonkeyBridge,
                             adBlockEngine = viewModel.adBlockEngine,
-                            isDarkTheme = uiState.isDarkTheme,
                             onPageStarted = { viewModel.onPageStarted(it, tab.id) },
                             onPageFinished = { url, title -> viewModel.onPageFinished(url, title, tab.id) },
                             onProgressChanged = { viewModel.onProgressChanged(it, tab.id) },
@@ -256,7 +254,6 @@ fun BrowserMainScreen(
             if (activeTab != null && activeTab.url != "about:blank") {
                 DevToolsPanel(
                     isOpen = isDevToolsOpen,
-                    isDarkTheme = uiState.isDarkTheme,
                     targetWebView = activeWebView,
                     onClose = { viewModel.toggleDevTools() },
                     onReloadTarget = { activeWebView?.reload() },
@@ -276,62 +273,6 @@ fun BrowserMainScreen(
                         .fillMaxWidth()
                         .align(Alignment.TopCenter)
                 )
-            }
-
-            // Quick Scroll Floating Control (Bottom Right)
-            if (uiState.isQuickScrollEnabled && !isHome && !uiState.isFullscreen) {
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    tonalElevation = 6.dp,
-                    shadowElevation = 4.dp,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 16.dp, bottom = 72.dp)
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        IconButton(
-                            onClick = {
-                                activeWebView?.evaluateJavascript(
-                                    "window.scrollBy({top: -window.innerHeight * 0.75, behavior: 'smooth'});",
-                                    null
-                                )
-                            },
-                            modifier = Modifier.size(44.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowUp,
-                                contentDescription = "Scroll Ke Atas",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-
-                        HorizontalDivider(
-                            modifier = Modifier.width(28.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                        )
-
-                        IconButton(
-                            onClick = {
-                                activeWebView?.evaluateJavascript(
-                                    "window.scrollBy({top: window.innerHeight * 0.75, behavior: 'smooth'});",
-                                    null
-                                )
-                            },
-                            modifier = Modifier.size(44.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowDown,
-                                contentDescription = "Scroll Ke Bawah",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                }
             }
 
             // Real-Time Search Suggestions Overlay
@@ -412,18 +353,14 @@ fun BrowserMainScreen(
             SettingsSheet(
                 isDesktopMode = activeTab?.isDesktopMode ?: false,
                 isBookmarked = uiState.isCurrentUrlBookmarked,
-                isDarkTheme = uiState.isDarkTheme,
                 isDevToolsEnabled = activeTab?.isDevToolsEnabled ?: false,
                 isH264ifyEnabled = activeTab?.isH264ifyEnabled ?: true,
-                isQuickScrollEnabled = uiState.isQuickScrollEnabled,
                 isPullToRefreshEnabled = activeTab?.isPullToRefreshEnabled ?: true,
                 currentSearchEngine = uiState.searchEngine,
-                onToggleDarkTheme = { viewModel.toggleDarkTheme() },
                 onToggleDesktopMode = { viewModel.toggleDesktopMode() },
                 onToggleBookmark = { viewModel.toggleBookmark() },
                 onToggleDevTools = { viewModel.toggleDevTools() },
                 onToggleH264ify = { viewModel.toggleH264ify() },
-                onToggleQuickScroll = { viewModel.toggleQuickScroll() },
                 onTogglePullToRefresh = { viewModel.togglePullToRefresh() },
                 onOpenDownloads = { viewModel.openSystemDownloads(context) },
                 onOpenAdBlock = { viewModel.showSheet(ActiveSheet.ADBLOCK) },
@@ -447,7 +384,6 @@ fun BrowserMainScreen(
                 title = activeTab?.title ?: "",
                 isDesktopMode = activeTab?.isDesktopMode ?: false,
                 isAdBlockWhitelisted = isWhitelisted,
-                isDarkTheme = uiState.isDarkTheme,
                 isDevToolsEnabled = activeTab?.isDevToolsEnabled ?: false,
                 onToggleDesktopMode = {
                     viewModel.toggleDesktopMode()
@@ -457,7 +393,6 @@ fun BrowserMainScreen(
                     viewModel.toggleWhitelistForCurrentSite()
                     activeWebView?.reload()
                 },
-                onToggleDarkTheme = { viewModel.toggleDarkTheme() },
                 onToggleDevTools = { viewModel.toggleDevTools() },
                 onPrintPdf = {
                     viewModel.printCurrentPage(context, activeWebView)

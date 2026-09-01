@@ -12,29 +12,6 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-// Tema Gelap Standar
-private val DarkColorScheme = darkColorScheme(
-    primary = EnergyGreen,
-    onPrimary = Color(0xFF00210E),
-    primaryContainer = Color(0xFF00381E),
-    onPrimaryContainer = Color(0xFFA7F3D0),
-    secondary = ElectricCyan,
-    onSecondary = Color(0xFF00242B),
-    secondaryContainer = Color(0xFF003642),
-    onSecondaryContainer = Color(0xFFA5F3FC),
-    tertiary = ElectricCyanGlow,
-    background = DarkBackground,
-    onBackground = TextPrimary,
-    surface = DarkSurface,
-    onSurface = TextPrimary,
-    surfaceVariant = DarkSurfaceVariant,
-    onSurfaceVariant = TextSecondary,
-    outline = BorderSubtle,
-    outlineVariant = BorderHighlight,
-    error = ErrorRed,
-    onError = Color.White
-)
-
 // Tema Terang Standar
 private val LightColorScheme = lightColorScheme(
     primary = Color(0xFF006D3B),
@@ -58,10 +35,9 @@ private val LightColorScheme = lightColorScheme(
 
 @Composable
 fun MyApplicationTheme(
-    darkTheme: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
+    val colorScheme = LightColorScheme
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -71,8 +47,8 @@ fun MyApplicationTheme(
                 window.statusBarColor = colorScheme.background.toArgb()
                 window.navigationBarColor = colorScheme.background.toArgb()
                 val insetsController = WindowCompat.getInsetsController(window, view)
-                insetsController.isAppearanceLightStatusBars = !darkTheme
-                insetsController.isAppearanceLightNavigationBars = !darkTheme
+                insetsController.isAppearanceLightStatusBars = true
+                insetsController.isAppearanceLightNavigationBars = true
             }
         }
     }

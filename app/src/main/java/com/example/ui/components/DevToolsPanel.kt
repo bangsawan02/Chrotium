@@ -110,7 +110,6 @@ data class ConsoleLogItem(
 @Composable
 fun DevToolsPanel(
     isOpen: Boolean,
-    isDarkTheme: Boolean,
     onClose: () -> Unit,
     targetWebView: WebView? = null,
     onReloadTarget: () -> Unit = {},

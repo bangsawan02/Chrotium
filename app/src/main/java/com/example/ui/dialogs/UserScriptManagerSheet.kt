@@ -8,6 +8,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -109,7 +110,6 @@ import com.example.ui.theme.BorderHighlight
 import com.example.ui.theme.BorderSubtle
 import com.example.ui.theme.DarkBackground
 import com.example.ui.theme.DarkSurface
-import com.example.ui.theme.DarkSurfaceElevated
 import com.example.ui.theme.DarkSurfaceVariant
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.ElectricCyanGlow
@@ -157,7 +157,7 @@ fun UserScriptManagerSheet(
         val target = previewScript!!
         AlertDialog(
             onDismissRequest = { previewScript = null },
-            containerColor = DarkSurfaceElevated,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             title = {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,

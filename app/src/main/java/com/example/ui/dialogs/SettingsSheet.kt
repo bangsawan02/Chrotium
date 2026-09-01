@@ -24,7 +24,6 @@ import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.Download
@@ -65,18 +64,14 @@ import com.example.ui.SearchEngine
 fun SettingsSheet(
     isDesktopMode: Boolean,
     isBookmarked: Boolean,
-    isDarkTheme: Boolean = true,
     isDevToolsEnabled: Boolean = false,
     isH264ifyEnabled: Boolean = true,
-    isQuickScrollEnabled: Boolean = true,
     isPullToRefreshEnabled: Boolean = true,
     currentSearchEngine: SearchEngine,
-    onToggleDarkTheme: () -> Unit = {},
     onToggleDesktopMode: () -> Unit,
     onToggleBookmark: () -> Unit,
     onToggleDevTools: () -> Unit = {},
     onToggleH264ify: () -> Unit = {},
-    onToggleQuickScroll: () -> Unit = {},
     onTogglePullToRefresh: () -> Unit = {},
     onOpenDownloads: () -> Unit = {},
     onOpenAdBlock: () -> Unit = {},
@@ -368,56 +363,6 @@ fun SettingsSheet(
                                 )
                             }
 
-                            // Quick Scroll Floating Button toggle
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onToggleQuickScroll() }
-                                    .padding(vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.UnfoldMore,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column {
-                                        Text(
-                                            text = "Tombol Gulir Cepat (Quick Scroll)",
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = "Tampilkan tombol melayang di kanan bawah untuk gulir atas/bawah",
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            fontSize = 10.5.sp,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                }
-                                Switch(
-                                    checked = isQuickScrollEnabled,
-                                    onCheckedChange = { onToggleQuickScroll() },
-                                    colors = SwitchDefaults.colors(
-                                        checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
-                                        uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
-                                    )
-                                )
-                            }
-
                             // Downloads Manager entry
                             Row(
                                 modifier = Modifier
@@ -554,63 +499,6 @@ fun SettingsSheet(
                                     )
                                 }
                                 Text("Cetak >", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
-
-                // Tampilan & Tema section
-                item {
-                    Text(
-                        text = "Tampilan & Tema",
-                        color = MaterialTheme.colorScheme.primary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Card(
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            // Mode Gelap / Terang toggle
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Tema Gelap (Dark Theme)",
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = if (isDarkTheme) "Aktif (Mode Gelap)" else "Nonaktif (Mode Terang)",
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontSize = 11.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                Switch(
-                                    checked = isDarkTheme,
-                                    onCheckedChange = { onToggleDarkTheme() },
-                                    colors = SwitchDefaults.colors(
-                                        checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                                        checkedTrackColor = MaterialTheme.colorScheme.primary,
-                                        uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
-                                    )
-                                )
                             }
                         }
                     }

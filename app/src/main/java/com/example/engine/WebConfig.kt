@@ -162,6 +162,21 @@ object WebConfig {
                     document.addEventListener('DOMContentLoaded', setMobileViewport);
                 }
 
+                // Inject overflow containment styles for responsive images & text wrapping
+                var overflowStyle = document.createElement('style');
+                overflowStyle.id = 'chrotium-anti-overflow';
+                overflowStyle.textContent = `
+                    img, video, canvas, svg {
+                        max-width: 100% !important;
+                        box-sizing: border-box !important;
+                    }
+                    p, h1, h2, h3, h4, h5, h6, span, blockquote {
+                        overflow-wrap: break-word !important;
+                        word-break: break-word !important;
+                    }
+                `;
+                (document.head || document.documentElement).appendChild(overflowStyle);
+
                 // 2. Enforce navigator.userAgentData mobile flag (Identik dengan Google Chrome Android murni)
                 if (navigator.userAgentData) {
                     try {
@@ -1375,7 +1390,7 @@ object WebConfig {
     /**
      * Konfigurasi WebSettings performa tinggi & kompatibilitas penuh untuk semua framework modern.
      */
-    fun configureWebSettings(settings: android.webkit.WebSettings, isDarkTheme: Boolean) {
+    fun configureWebSettings(settings: android.webkit.WebSettings) {
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
         @Suppress("DEPRECATION")
@@ -1395,7 +1410,13 @@ object WebConfig {
         settings.safeBrowsingEnabled = true
         settings.javaScriptCanOpenWindowsAutomatically = true
         settings.setNeedInitialFocus(true)
-        settings.layoutAlgorithm = android.webkit.WebSettings.LayoutAlgorithm.NORMAL
+        settings.layoutAlgorithm = android.webkit.WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                @Suppress("DEPRECATION")
+                settings.offscreenPreRaster = true
+            } catch (_: Throwable) {}
+        }
         settings.defaultTextEncodingName = "UTF-8"
         settings.standardFontFamily = "sans-serif"
         settings.sansSerifFontFamily = "sans-serif"
@@ -1412,23 +1433,6 @@ object WebConfig {
         @Suppress("DEPRECATION")
         settings.allowUniversalAccessFromFileURLs = true
 
-        try {
-            if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.ALGORITHMIC_DARKENING)) {
-                androidx.webkit.WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, isDarkTheme)
-            } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                settings.isAlgorithmicDarkeningAllowed = isDarkTheme
-            } else if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.FORCE_DARK)) {
-                @Suppress("DEPRECATION")
-                val forceDarkState = if (isDarkTheme) {
-                    androidx.webkit.WebSettingsCompat.FORCE_DARK_ON
-                } else {
-                    androidx.webkit.WebSettingsCompat.FORCE_DARK_OFF
-                }
-                androidx.webkit.WebSettingsCompat.setForceDark(settings, forceDarkState)
-            }
-        } catch (e: Throwable) {
-            // fallback aman
-        }
     }
 
     /**

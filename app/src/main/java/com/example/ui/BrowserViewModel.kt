@@ -72,10 +72,8 @@ data class BrowserUiState(
     val isOmniboxFocused: Boolean = false,
     val suggestions: List<SuggestionItem> = emptyList(),
     val showSuggestions: Boolean = false,
-    val isDarkTheme: Boolean = false,
     val shortcuts: List<ShortcutItem> = emptyList(),
     val isFullscreen: Boolean = false,
-    val isQuickScrollEnabled: Boolean = true
 ) {
     val activeTab: TabItem?
         get() = tabs.find { it.id == activeTabId } ?: tabs.firstOrNull()
@@ -109,8 +107,6 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     private val browserSettings = BrowserSettingsDataStore(application)
     private val settingsPrefs = application.getSharedPreferences("crotium_browser_settings", Context.MODE_PRIVATE)
-    private val savedDarkTheme = browserSettings.getDarkThemeSync(false)
-    private val savedQuickScroll = browserSettings.getQuickScrollSync(true)
     private val savedSearchEngineName = browserSettings.getSearchEngineNameSync(SearchEngine.DUCKDUCKGO.name)
     private val savedSearchEngine = try {
         SearchEngine.valueOf(savedSearchEngineName)
@@ -123,8 +119,6 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         BrowserUiState(
             tabs = listOf(TabItem(id = initialTabId, title = "Home", url = "about:blank")),
             activeTabId = initialTabId,
-            isDarkTheme = savedDarkTheme,
-            isQuickScrollEnabled = savedQuickScroll,
             searchEngine = savedSearchEngine,
             shortcuts = loadShortcuts()
         )
@@ -285,13 +279,6 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         _uiState.value = _uiState.value.copy(isFullscreen = fullscreen)
     }
 
-    fun toggleQuickScroll() {
-        val newValue = !_uiState.value.isQuickScrollEnabled
-        viewModelScope.launch {
-            browserSettings.setQuickScrollEnabled(newValue)
-        }
-        _uiState.value = _uiState.value.copy(isQuickScrollEnabled = newValue)
-    }
 
     fun openUrl(rawInput: String) {
         val trimmed = rawInput.trim()
@@ -679,13 +666,6 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         adBlockEngine.resetStats()
     }
 
-    fun toggleDarkTheme() {
-        val newDarkTheme = !_uiState.value.isDarkTheme
-        viewModelScope.launch {
-            browserSettings.setDarkTheme(newDarkTheme)
-        }
-        _uiState.value = _uiState.value.copy(isDarkTheme = newDarkTheme)
-    }
 
     fun setSearchEngine(engine: SearchEngine) {
         viewModelScope.launch {

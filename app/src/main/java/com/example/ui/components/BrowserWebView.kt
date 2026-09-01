@@ -230,7 +230,6 @@ fun BrowserWebView(
     scripts: List<UserScript>,
     tampermonkeyBridge: TampermonkeyBridge,
     adBlockEngine: AdBlockEngine,
-    isDarkTheme: Boolean,
     onPageStarted: (String) -> Unit,
     onPageFinished: (String, String?) -> Unit,
     onProgressChanged: (Int) -> Unit,
@@ -339,7 +338,7 @@ fun BrowserWebView(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            val defaultBg = if (isDarkTheme) android.graphics.Color.parseColor("#121212") else android.graphics.Color.WHITE
+            val defaultBg = android.graphics.Color.WHITE
             setBackgroundColor(defaultBg)
 
             // Configure WebSettings for optimal performance and smooth 60fps rendering
@@ -370,7 +369,7 @@ fun BrowserWebView(
             @Suppress("DEPRECATION")
             settings.offscreenPreRaster = true
             
-            com.example.engine.WebConfig.configureWebSettings(settings, isDarkTheme)
+            com.example.engine.WebConfig.configureWebSettings(settings)
 
             // Renderer Priority Policy (Memastikan proses render WebView diprioritaskan secara maksimal oleh OS)
             try {
@@ -581,7 +580,7 @@ fun BrowserWebView(
                     onPageStarted(safeUrl)
 
                     view?.let { wv ->
-                        injectPageEnhancements(wv, safeUrl, isAuth, isDarkTheme, tab.isH264ifyEnabled, tab.isDesktopMode, adBlockEngine)
+                        injectPageEnhancements(wv, safeUrl, isAuth, tab.isH264ifyEnabled, tab.isDesktopMode, adBlockEngine)
                     }
 
                     // Inject document-start scripts (only for non-auth pages)
@@ -622,7 +621,7 @@ fun BrowserWebView(
                     }
 
                     view?.let { wv ->
-                        injectPageEnhancements(wv, safeUrl, isAuth, isDarkTheme, tab.isH264ifyEnabled, tab.isDesktopMode, adBlockEngine)
+                        injectPageEnhancements(wv, safeUrl, isAuth, tab.isH264ifyEnabled, tab.isDesktopMode, adBlockEngine)
                     }
 
                     // Inject document-end & document-idle scripts (only for non-auth pages)
@@ -855,7 +854,7 @@ fun BrowserWebView(
 
                     val tempWebView = BackgroundPlayWebView(view.context).apply {
                         setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
-                        com.example.engine.WebConfig.configureWebSettings(settings, isDarkTheme)
+                        com.example.engine.WebConfig.configureWebSettings(settings)
                         settings.userAgentString = view.settings.userAgentString
                         com.example.engine.CookieHelper.configureWebViewCookies(this, true)
 
@@ -1119,6 +1118,17 @@ fun BrowserWebView(
         }
     }
 
+    // V-Sync & Frame Rate Sync (Choreographer) untuk menyelaraskan siklus gambar WebView dengan refresh rate panel layar (60Hz / 90Hz / 120Hz)
+    DisposableEffect(webView, isVisible) {
+        val vsyncSync = com.example.engine.VSyncFrameSynchronizer(webView)
+        if (isVisible) {
+            vsyncSync.start()
+        }
+        onDispose {
+            vsyncSync.stop()
+        }
+    }
+
     // Report WebView instance to parent when visible and register with bridge
     LaunchedEffect(isVisible, webView) {
         if (isVisible) {
@@ -1142,12 +1152,6 @@ fun BrowserWebView(
     }
 
     // Dynamic dark theme listener for real-time algorithmic darkening & color scheme override
-    LaunchedEffect(isDarkTheme) {
-        val defaultBg = if (isDarkTheme) android.graphics.Color.parseColor("#121212") else android.graphics.Color.WHITE
-        webView.setBackgroundColor(defaultBg)
-        com.example.engine.WebConfig.configureWebSettings(webView.settings, isDarkTheme)
-        injectColorSchemeScript(webView, isDarkTheme)
-    }
 
     // Update User Agent if Desktop Mode changes
     LaunchedEffect(tab.isDesktopMode) {
@@ -1517,67 +1521,10 @@ fun BrowserWebView(
     }
 }
 
-private fun injectColorSchemeScript(wv: WebView, isDark: Boolean) {
-    val js = """
-        (function() {
-            try {
-                var isDark = $isDark;
-                if (!window.__colorSchemeOverrideActive) {
-                    window.__colorSchemeOverrideActive = true;
-                    var origMatchMedia = window.matchMedia;
-                    window.matchMedia = function(q) {
-                        if (q && q.indexOf('prefers-color-scheme') !== -1) {
-                            var matches = isDark ? (q.indexOf('dark') !== -1) : (q.indexOf('light') !== -1);
-                            return {
-                                matches: matches,
-                                media: q,
-                                onchange: null,
-                                addListener: function() {},
-                                removeListener: function() {},
-                                addEventListener: function() {},
-                                removeEventListener: function() {},
-                                dispatchEvent: function() { return false; }
-                            };
-                        }
-                        return origMatchMedia ? origMatchMedia.call(window, q) : { matches: false, media: q };
-                    };
-                }
-                if (document.documentElement) {
-                    var themeValue = isDark ? "dark" : "light";
-                    var meta = document.querySelector('meta[name="color-scheme"]');
-                    if (!meta) {
-                        meta = document.createElement('meta');
-                        meta.name = 'color-scheme';
-                        if (document.head) {
-                            document.head.appendChild(meta);
-                        }
-                    }
-                    if (meta) {
-                        meta.content = themeValue;
-                    }
-
-                    if (isDark) {
-                        if (location.hostname.indexOf('youtube.com') !== -1) {
-                            document.documentElement.setAttribute('dark', 'true');
-                        }
-                    } else {
-                        if (location.hostname.indexOf('youtube.com') !== -1) {
-                            document.documentElement.removeAttribute('dark');
-                            document.documentElement.setAttribute('dark', 'false');
-                        }
-                    }
-                }
-            } catch(e) {}
-        })();
-    """.trimIndent()
-    wv.evaluateJavascript(js, null)
-}
-
 private fun injectPageEnhancements(
     wv: WebView,
     safeUrl: String,
     isAuth: Boolean,
-    isDarkTheme: Boolean,
     isH264ifyEnabled: Boolean,
     isDesktopMode: Boolean,
     adBlockEngine: com.example.engine.AdBlockEngine
@@ -1590,7 +1537,6 @@ private fun injectPageEnhancements(
     wv.evaluateJavascript(com.example.engine.WebConfig.GPU_RENDER_ACCELERATION_SCRIPT, null)
 
     if (!isAuth) {
-        injectColorSchemeScript(wv, isDarkTheme)
         adBlockEngine.injectCosmeticAdBlocking(wv, safeUrl)
         wv.evaluateJavascript(com.example.engine.WebConfig.BACKGROUND_PLAY_SCRIPT, null)
         wv.evaluateJavascript(com.example.engine.WebConfig.ANGULAR_SPA_OPTIMIZATION_SCRIPT, null)
