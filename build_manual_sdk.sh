@@ -53,43 +53,54 @@ echo -e "${YELLOW}[2/5] Mengompilasi dan mengemas resource aplikasi via AAPT2...
 "$AAPT2" compile --dir app/src/main/res -o "$WORK_DIR/compiled_res.zip"
 
 mkdir -p "$WORK_DIR/manifest"
-sed 's/<manifest/<manifest package="org.matrix.chromext"/' app/src/main/AndroidManifest.xml > "$WORK_DIR/manifest/AndroidManifest.xml"
+# Pastikan manifest memiliki package valid com.example agar activity component terpeta dengan benar
+sed 's/<manifest/<manifest package="com.example"/' app/src/main/AndroidManifest.xml > "$WORK_DIR/manifest/AndroidManifest.xml"
 
 "$AAPT2" link \
     -I "$PLATFORM_JAR" \
     --manifest "$WORK_DIR/manifest/AndroidManifest.xml" \
-    -o "$WORK_DIR/base_res.apk" \
+    --min-sdk-version 26 \
+    --target-sdk-version 35 \
+    --version-code 1 \
+    --version-name "3.8.7" \
+    --custom-package com.example \
     --auto-add-overlay \
+    -o "$WORK_DIR/base_res.apk" \
     "$WORK_DIR/compiled_res.zip"
 
 echo -e "${GREEN}[✓] Resource APK berhasil ditautkan oleh AAPT2.${NC}"
 
 # 2. Dexing Bytecode menggunakan D8
 echo -e "${YELLOW}[3/5] Memproses bytecode / JAR menjadi Dalvik Executable (classes.dex) via D8...${NC}"
-# Kumpulkan semua class files / JAR hasil kompilasi
-CLASSES_SRC="app/build/intermediates/javac/release/compileReleaseJavaWithJavac/classes"
-KOTLIN_SRC="app/build/tmp/kotlin-classes/release"
 
-if [ ! -d "$KOTLIN_SRC" ]; then
-    echo -e "${YELLOW}[i] Menyiapkan class files bytecode untuk pemrosesan D8...${NC}"
-    if command -v gradle >/dev/null 2>&1; then
-        gradle :app:compileReleaseKotlin :app:compileReleaseJavaWithJavac --no-daemon -q
-    elif [ -f "./gradlew" ]; then
-        chmod +x ./gradlew
-        ./gradlew :app:compileReleaseKotlin :app:compileReleaseJavaWithJavac --no-daemon -q
+# Cari DEX lengkap yang sudah dioptimasi atau build via toolchain
+if [ -f "app/build/intermediates/dex/release/minifyReleaseWithR8/classes.dex" ]; then
+    echo -e "${GREEN}[*] Menggunakan release optimized DEX artifacts...${NC}"
+    cp app/build/intermediates/dex/release/minifyReleaseWithR8/classes*.dex "$WORK_DIR/dex/"
+elif [ -f "app/build/intermediates/dex/debug/minifyDebugWithR8/classes.dex" ]; then
+    echo -e "${GREEN}[*] Menggunakan optimized DEX artifacts...${NC}"
+    cp app/build/intermediates/dex/debug/minifyDebugWithR8/classes*.dex "$WORK_DIR/dex/"
+else
+    CLASSES_SRC="app/build/intermediates/javac/release/compileReleaseJavaWithJavac/classes"
+    KOTLIN_SRC="app/build/tmp/kotlin-classes/release"
+    
+    if [ ! -d "$KOTLIN_SRC" ]; then
+        echo -e "${YELLOW}[i] Menyiapkan class files bytecode untuk pemrosesan D8...${NC}"
+        if command -v gradle >/dev/null 2>&1; then
+            gradle :app:compileReleaseKotlin :app:compileReleaseJavaWithJavac --no-daemon -q
+        elif [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            ./gradlew :app:compileReleaseKotlin :app:compileReleaseJavaWithJavac --no-daemon -q
+        fi
     fi
+
+    # Eksekusi D8 compiler
+    echo -e "${YELLOW}[*] Menjalankan D8 Compiler ke $WORK_DIR/dex...${NC}"
+    "$D8" --release --min-api 26 \
+        --lib "$PLATFORM_JAR" \
+        --output "$WORK_DIR/dex" \
+        $(find "$KOTLIN_SRC" "$CLASSES_SRC" -name "*.class" 2>/dev/null)
 fi
-
-# Cari seluruh runtime JAR dependency
-JAR_LIST="$WORK_DIR/jars.txt"
-find /opt/gradle/.gradle/caches/modules-2/files-2.1 -name "*.jar" > "$JAR_LIST" 2>/dev/null || true
-
-# Eksekusi D8 compiler
-echo -e "${YELLOW}[*] Menjalankan D8 Compiler ke $WORK_DIR/dex...${NC}"
-"$D8" --release --min-api 26 \
-    --lib "$PLATFORM_JAR" \
-    --output "$WORK_DIR/dex" \
-    $(find "$KOTLIN_SRC" "$CLASSES_SRC" -name "*.class" 2>/dev/null)
 
 echo -e "${GREEN}[✓] File DEX berhasil dihasilkan oleh D8.${NC}"
 
