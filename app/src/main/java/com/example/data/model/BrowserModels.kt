@@ -1,18 +1,6 @@
 package com.example.data.model
 
-import androidx.room.Entity
-import androidx.room.PrimaryKey
-import kotlinx.serialization.Serializable
-
-@Entity(
-    tableName = "bookmarks",
-    indices = [
-        androidx.room.Index(value = ["url"]),
-        androidx.room.Index(value = ["createdAt"])
-    ]
-)
 data class Bookmark(
-    @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     val title: String,
     val url: String,
@@ -20,15 +8,7 @@ data class Bookmark(
     val createdAt: Long = System.currentTimeMillis()
 )
 
-@Entity(
-    tableName = "history",
-    indices = [
-        androidx.room.Index(value = ["url"], unique = true),
-        androidx.room.Index(value = ["visitedAt"])
-    ]
-)
 data class HistoryItem(
-    @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     val title: String,
     val url: String,
@@ -56,12 +36,7 @@ data class TabItem(
     val activeScriptNames: List<String> = emptyList()
 )
 
-@Entity(
-    tableName = "tab_sessions",
-    indices = [androidx.room.Index(value = ["sortOrder"])]
-)
 data class TabSession(
-    @PrimaryKey
     val id: String,
     val title: String,
     val url: String,
@@ -69,7 +44,6 @@ data class TabSession(
     val sortOrder: Int
 )
 
-@Serializable
 data class ShortcutItem(
     val title: String,
     val url: String,

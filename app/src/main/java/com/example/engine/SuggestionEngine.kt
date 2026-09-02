@@ -1,6 +1,6 @@
 package com.example.engine
 
-import com.example.data.db.AppDatabase
+import com.example.data.db.DatabaseHelper
 import com.example.data.model.SuggestionItem
 import com.example.data.model.SuggestionType
 import kotlinx.coroutines.Dispatchers
@@ -10,7 +10,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
-class SuggestionEngine(private val database: AppDatabase) {
+class SuggestionEngine(private val database: DatabaseHelper) {
 
     private val commonDomains = listOf(
         "google.com", "youtube.com", "github.com", "wikipedia.org", "reddit.com",
@@ -42,7 +42,9 @@ class SuggestionEngine(private val database: AppDatabase) {
 
         // 2. Local Bookmarks Match
         try {
-            val bookmarks = database.bookmarkDao().searchBookmarks(trimmed)
+            val bookmarks = database.getBookmarks().filter { 
+                it.title.contains(trimmed, ignoreCase = true) || it.url.contains(trimmed, ignoreCase = true) 
+            }
             for (bm in bookmarks.take(3)) {
                 if (results.none { it.destinationUrl.equals(bm.url, ignoreCase = true) }) {
                     results.add(
@@ -61,7 +63,9 @@ class SuggestionEngine(private val database: AppDatabase) {
 
         // 3. Local History Match
         try {
-            val historyItems = database.historyDao().searchHistory(trimmed)
+            val historyItems = database.getHistory().filter { 
+                it.title.contains(trimmed, ignoreCase = true) || it.url.contains(trimmed, ignoreCase = true) 
+            }
             for (h in historyItems.take(3)) {
                 if (results.none { it.destinationUrl.equals(h.url, ignoreCase = true) }) {
                     results.add(

@@ -7,7 +7,7 @@ import android.webkit.WebStorage
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.BrowserSettingsDataStore
-import com.example.data.db.AppDatabase
+import com.example.data.db.DatabaseHelper
 import com.example.data.defaultShortcuts
 import com.example.data.deserializeShortcuts
 import com.example.data.model.Bookmark
@@ -92,8 +92,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private val database by lazy { AppDatabase.getDatabase(application) }
-    val repository by lazy { BrowserRepository(database) }
+    private val database by lazy { com.example.data.db.DatabaseHelper(application) }
+    val repository by lazy { BrowserRepository(application) }
     val tampermonkeyBridge by lazy { TampermonkeyBridge(application) }
     val suggestionEngine by lazy { SuggestionEngine(database) }
     val downloadEngine by lazy { DownloadEngine(application) }

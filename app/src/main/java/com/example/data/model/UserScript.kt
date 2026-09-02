@@ -1,7 +1,5 @@
 package com.example.data.model
 
-import androidx.room.Entity
-import androidx.room.PrimaryKey
 import java.util.regex.Pattern
 
 data class ParsedScriptMetadata(
@@ -15,9 +13,7 @@ data class ParsedScriptMetadata(
     val grants: List<String> = emptyList()
 )
 
-@Entity(tableName = "userscripts")
 data class UserScript(
-    @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     val name: String,
     val description: String = "",

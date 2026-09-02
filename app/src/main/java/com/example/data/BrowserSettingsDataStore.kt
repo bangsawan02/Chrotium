@@ -1,24 +1,14 @@
 package com.example.data
 
 import android.content.Context
-import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.booleanPreferencesKey
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
+import android.content.SharedPreferences
 import com.example.data.model.ShortcutItem
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import org.json.JSONArray
+import org.json.JSONObject
 
-private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "browser_settings")
-private val browserJson = Json { ignoreUnknownKeys = true }
-
-@Serializable
 data class SavedTabState(
     val url: String,
     val title: String,
@@ -36,123 +26,135 @@ fun defaultShortcuts(): List<ShortcutItem> = listOf(
     ShortcutItem("YouTube", "https://m.youtube.com", "#FFFF0000", "YT")
 )
 
-fun serializeShortcuts(shortcuts: List<ShortcutItem>): String = browserJson.encodeToString(shortcuts)
+fun serializeShortcuts(shortcuts: List<ShortcutItem>): String {
+    val array = JSONArray()
+    for (s in shortcuts) {
+        val obj = JSONObject()
+        obj.put("title", s.title)
+        obj.put("url", s.url)
+        obj.put("iconColorHex", s.iconColorHex)
+        obj.put("initial", s.initial)
+        array.put(obj)
+    }
+    return array.toString()
+}
 
 fun deserializeShortcuts(jsonStr: String?): List<ShortcutItem> {
     if (jsonStr.isNullOrBlank()) return defaultShortcuts()
     return try {
-        browserJson.decodeFromString<List<ShortcutItem>>(jsonStr)
-    } catch (e: IllegalArgumentException) {
-        android.util.Log.w("BrowserSettingsDataStore", "Invalid shortcuts JSON: ${e.message}")
-        defaultShortcuts()
+        val array = JSONArray(jsonStr)
+        val list = mutableListOf<ShortcutItem>()
+        for (i in 0 until array.length()) {
+            val obj = array.getJSONObject(i)
+            list.add(ShortcutItem(
+                title = obj.optString("title", ""),
+                url = obj.optString("url", ""),
+                iconColorHex = obj.optString("iconColorHex", ""),
+                initial = obj.optString("initial", "")
+            ))
+        }
+        list
     } catch (e: Exception) {
-        android.util.Log.e("BrowserSettingsDataStore", "Unexpected error deserializing shortcuts", e)
+        android.util.Log.w("BrowserSettingsDataStore", "Invalid shortcuts JSON: ${e.message}")
         defaultShortcuts()
     }
 }
 
 class BrowserSettingsDataStore(private val context: Context) {
 
-    private val legacyPrefs = context.getSharedPreferences("crotium_browser_settings", Context.MODE_PRIVATE)
-    private val jsonFormatter = browserJson
+    private val prefs: SharedPreferences = context.getSharedPreferences("crotium_browser_settings", Context.MODE_PRIVATE)
 
-    companion object {
-        val AD_BLOCK_ENABLED = booleanPreferencesKey("ad_block_enabled")
-        val DESKTOP_MODE_DEFAULT = booleanPreferencesKey("desktop_mode_default")
-        val SEARCH_ENGINE = stringPreferencesKey("pref_search_engine")
-        val TRANSLATE_LANGUAGE_CODE = stringPreferencesKey("pref_translate_lang_code")
-        val SHORTCUTS_JSON = stringPreferencesKey("pref_shortcuts_json")
-        val SAVED_TABS_JSON = stringPreferencesKey("saved_tabs_json")
-    }
+    private val _isAdBlockEnabled = MutableStateFlow(prefs.getBoolean("ad_block_enabled", true))
+    val isAdBlockEnabled: StateFlow<Boolean> = _isAdBlockEnabled.asStateFlow()
 
-    val isAdBlockEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
-        preferences[AD_BLOCK_ENABLED] ?: legacyPrefs.getBoolean("ad_block_enabled", true)
-    }
+    private val _isDesktopModeDefault = MutableStateFlow(prefs.getBoolean("desktop_mode_default", false))
+    val isDesktopModeDefault: StateFlow<Boolean> = _isDesktopModeDefault.asStateFlow()
 
-    val isDesktopModeDefault: Flow<Boolean> = context.dataStore.data.map { preferences ->
-        preferences[DESKTOP_MODE_DEFAULT] ?: legacyPrefs.getBoolean("desktop_mode_default", false)
-    }
+    private val _searchEngineName = MutableStateFlow(prefs.getString("pref_search_engine", "DUCKDUCKGO") ?: "DUCKDUCKGO")
+    val searchEngineName: StateFlow<String> = _searchEngineName.asStateFlow()
 
-    val searchEngineName: Flow<String> = context.dataStore.data.map { preferences ->
-        preferences[SEARCH_ENGINE] ?: legacyPrefs.getString("pref_search_engine", "DUCKDUCKGO") ?: "DUCKDUCKGO"
-    }
+    private val _translateLanguageCode = MutableStateFlow(prefs.getString("pref_translate_lang_code", "id") ?: "id")
+    val translateLanguageCode: StateFlow<String> = _translateLanguageCode.asStateFlow()
 
-    val translateLanguageCode: Flow<String> = context.dataStore.data.map { preferences ->
-        preferences[TRANSLATE_LANGUAGE_CODE] ?: legacyPrefs.getString("pref_translate_lang_code", "id") ?: "id"
-    }
+    private val _shortcuts = MutableStateFlow(deserializeShortcuts(prefs.getString("pref_shortcuts_json", null)))
+    val shortcuts: StateFlow<List<ShortcutItem>> = _shortcuts.asStateFlow()
 
-    val shortcuts: Flow<List<ShortcutItem>> = context.dataStore.data.map { preferences ->
-        deserializeShortcuts(preferences[SHORTCUTS_JSON] ?: legacyPrefs.getString("pref_shortcuts_json", null))
-    }
+    private val _savedTabs = MutableStateFlow(deserializeSavedTabs(prefs.getString("saved_tabs_json", "")))
+    val savedTabs: StateFlow<List<SavedTabState>> = _savedTabs.asStateFlow()
 
-    val savedTabs: Flow<List<SavedTabState>> = context.dataStore.data.map { preferences ->
-        val jsonStr = preferences[SAVED_TABS_JSON] ?: ""
-        if (jsonStr.isBlank()) {
-            emptyList()
-        } else {
-            try {
-                jsonFormatter.decodeFromString<List<SavedTabState>>(jsonStr)
-            } catch (e: Exception) {
-                emptyList()
+    private fun deserializeSavedTabs(jsonStr: String?): List<SavedTabState> {
+        if (jsonStr.isNullOrBlank()) return emptyList()
+        return try {
+            val array = JSONArray(jsonStr)
+            val list = mutableListOf<SavedTabState>()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                list.add(SavedTabState(
+                    url = obj.optString("url", ""),
+                    title = obj.optString("title", ""),
+                    isDesktopMode = obj.optBoolean("isDesktopMode", false)
+                ))
             }
+            list
+        } catch (e: Exception) {
+            emptyList()
         }
+    }
+
+    private fun serializeSavedTabs(tabs: List<SavedTabState>): String {
+        val array = JSONArray()
+        for (t in tabs) {
+            val obj = JSONObject()
+            obj.put("url", t.url)
+            obj.put("title", t.title)
+            obj.put("isDesktopMode", t.isDesktopMode)
+            array.put(obj)
+        }
+        return array.toString()
     }
 
     fun getSearchEngineNameSync(default: String = "DUCKDUCKGO"): String =
-        legacyPrefs.getString("pref_search_engine", default) ?: default
+        prefs.getString("pref_search_engine", default) ?: default
 
     fun getTranslateLanguageCodeSync(default: String = "id"): String =
-        legacyPrefs.getString("pref_translate_lang_code", default) ?: default
+        prefs.getString("pref_translate_lang_code", default) ?: default
 
     fun getShortcutsSync(): List<ShortcutItem> =
-        deserializeShortcuts(legacyPrefs.getString("pref_shortcuts_json", null))
+        deserializeShortcuts(prefs.getString("pref_shortcuts_json", null))
 
-    suspend fun setAdBlockEnabled(enabled: Boolean) {
-        context.dataStore.edit { preferences ->
-            preferences[AD_BLOCK_ENABLED] = enabled
-        }
-        legacyPrefs.edit().putBoolean("ad_block_enabled", enabled).apply()
+    fun setAdBlockEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("ad_block_enabled", enabled).apply()
+        _isAdBlockEnabled.value = enabled
     }
 
-    suspend fun setDesktopModeDefault(enabled: Boolean) {
-        context.dataStore.edit { preferences ->
-            preferences[DESKTOP_MODE_DEFAULT] = enabled
-        }
-        legacyPrefs.edit().putBoolean("desktop_mode_default", enabled).apply()
+    fun setDesktopModeDefault(enabled: Boolean) {
+        prefs.edit().putBoolean("desktop_mode_default", enabled).apply()
+        _isDesktopModeDefault.value = enabled
     }
 
-    suspend fun setSearchEngineName(name: String) {
-        context.dataStore.edit { preferences ->
-            preferences[SEARCH_ENGINE] = name
-        }
-        legacyPrefs.edit().putString("pref_search_engine", name).apply()
+    fun setSearchEngineName(name: String) {
+        prefs.edit().putString("pref_search_engine", name).apply()
+        _searchEngineName.value = name
     }
 
-    suspend fun setTranslateLanguageCode(code: String) {
-        context.dataStore.edit { preferences ->
-            preferences[TRANSLATE_LANGUAGE_CODE] = code
-        }
-        legacyPrefs.edit().putString("pref_translate_lang_code", code).apply()
+    fun setTranslateLanguageCode(code: String) {
+        prefs.edit().putString("pref_translate_lang_code", code).apply()
+        _translateLanguageCode.value = code
     }
 
-    suspend fun setShortcuts(shortcuts: List<ShortcutItem>) {
+    fun setShortcuts(shortcuts: List<ShortcutItem>) {
         val encoded = serializeShortcuts(shortcuts)
-        context.dataStore.edit { preferences ->
-            preferences[SHORTCUTS_JSON] = encoded
-        }
-        legacyPrefs.edit().putString("pref_shortcuts_json", encoded).apply()
+        prefs.edit().putString("pref_shortcuts_json", encoded).apply()
+        _shortcuts.value = shortcuts
     }
 
-    suspend fun setSearchEngineValue(engineName: String) {
-        context.dataStore.edit { preferences ->
-            preferences[SEARCH_ENGINE] = engineName
-        }
-        legacyPrefs.edit().putString("pref_search_engine", engineName).apply()
+    fun setSearchEngineValue(engineName: String) {
+        setSearchEngineName(engineName)
     }
 
-    suspend fun saveTabsState(tabs: List<SavedTabState>) {
-        context.dataStore.edit { preferences ->
-            preferences[SAVED_TABS_JSON] = jsonFormatter.encodeToString(tabs)
-        }
+    fun saveTabsState(tabs: List<SavedTabState>) {
+        val encoded = serializeSavedTabs(tabs)
+        prefs.edit().putString("saved_tabs_json", encoded).apply()
+        _savedTabs.value = tabs
     }
 }

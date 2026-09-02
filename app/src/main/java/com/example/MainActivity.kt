@@ -70,20 +70,18 @@ class MainActivity : ComponentActivity() {
     com.example.engine.WebConfig.warmUpDnsAndNetwork()
     com.example.engine.DiskCacheManager.init(this)
 
-    // Schedule background periodic maintenance using WorkManager
-    val maintenanceWorkRequest = androidx.work.PeriodicWorkRequestBuilder<com.example.worker.BrowserMaintenanceWorker>(
-      24, java.util.concurrent.TimeUnit.HOURS
-    ).setConstraints(
-      androidx.work.Constraints.Builder()
-        .setRequiresBatteryNotLow(false)
-        .build()
-    ).build()
-
-    androidx.work.WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-      "BrowserMaintenanceWork",
-      androidx.work.ExistingPeriodicWorkPolicy.KEEP,
-      maintenanceWorkRequest
+    // Schedule background periodic maintenance using JobScheduler
+    val jobScheduler = getSystemService(android.content.Context.JOB_SCHEDULER_SERVICE) as android.app.job.JobScheduler
+    val jobInfo = android.app.job.JobInfo.Builder(
+        1001,
+        android.content.ComponentName(this, com.example.worker.BrowserMaintenanceJobService::class.java)
     )
+    .setPeriodic(24 * 60 * 60 * 1000L) // 24 hours
+    .setRequiresBatteryNotLow(false)
+    .setPersisted(true)
+    .build()
+
+    jobScheduler.schedule(jobInfo)
 
     setContent {
       MyApplicationTheme {

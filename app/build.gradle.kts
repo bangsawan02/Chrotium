@@ -1,8 +1,8 @@
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
-  alias(libs.plugins.kotlin.serialization)
-  alias(libs.plugins.google.devtools.ksp)
+  // alias(libs.plugins.kotlin.serialization)
+  // alias(libs.plugins.google.devtools.ksp)
   alias(libs.plugins.roborazzi)
   id("com.ncorti.ktfmt.gradle")
 }
@@ -131,11 +131,11 @@ tasks.configureEach {
   }
 }
 
-ksp {
-  arg("room.schemaLocation", "$projectDir/schemas")
-  arg("room.incremental", "true")
-  arg("room.expandProjection", "true")
-}
+// ksp {
+//   arg("room.schemaLocation", "$projectDir/schemas")
+//   arg("room.incremental", "true")
+//   arg("room.expandProjection", "true")
+// }
 
 dependencies {
   compileOnly("de.robv.android.xposed:api:82")
@@ -151,16 +151,16 @@ dependencies {
   implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.lifecycle.viewmodel.compose)
-  implementation(libs.androidx.room.ktx)
-  implementation(libs.androidx.room.runtime)
+  // implementation(libs.androidx.room.ktx)
+  // implementation(libs.androidx.room.runtime)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
   // Unused external dependencies commented out to optimize APK size and prioritize native APIs
   // implementation(libs.coil.compose)
-  implementation(libs.androidx.datastore.preferences)
-  implementation(libs.kotlinx.serialization.json)
+  // implementation(libs.androidx.datastore.preferences)
+  // implementation(libs.kotlinx.serialization.json)
   // implementation(libs.okhttp)
-  implementation(libs.androidx.work.runtime.ktx)
+  // implementation(libs.androidx.work.runtime.ktx)
   // implementation(libs.quickjs.android)
   implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
   implementation("androidx.webkit:webkit:1.12.1")
@@ -176,7 +176,7 @@ dependencies {
   // testImplementation(libs.roborazzi.compose)
   // testImplementation(libs.roborazzi.junit.rule)
   // debugImplementation(libs.androidx.compose.ui.test.manifest)
-  "ksp"(libs.androidx.room.compiler)
+  // "ksp"(libs.androidx.room.compiler)
 }
 
 kotlin {
