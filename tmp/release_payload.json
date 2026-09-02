@@ -1,0 +1,8 @@
+{
+  "tag_name": "v3.8.3",
+  "target_commitish": "main",
+  "name": "Chrotium v3.8.3",
+  "body": "### Pembaruan Chrotium v3.8.3\n\nRilis ini membawa peningkatan performa tinggi, stabilitas, dan optimasi media:\n\n1. **Bypass & Eliminasi Delay YouTube Playback**: Menghindari jeda 5+ detik dengan meloloskan segmentasi streaming media (googlevideo.com) langsung ke native Chromium engine.\n2. **AdBlock Anti-Timeout**: Mengembalikan response \"200 OK\" kosong dengan header CORS \"Access-Control-Allow-Origin: *\" daripada string null/404 untuk request tracker/iklan agar pemutar video JS tidak menggantung.\n3. **Isolasi Proses & Multi-Process Renderer**: Mengurangi crash browser akibat OOM dengan implementasi WebViewRenderProcessClient dinamis.\n4. **Smart Dark Mode & Anti-Flicker**: Implementasi pintar ALGORITHMIC_DARKENING dengan transisi warna latar belakang gelap solid #121212 untuk mencegah efek kedipan putih (white flash).\n5. **Pencegahan Refresh Tidak Sengaja (Anti Pull-to-Refresh)**: Menonaktifkan SwipeRefreshLayout secara pintar pada web Single Page Application (SPA) seperti Google AI Studio dan YouTube.\n6. **Dukungan Video YouTube Fullscreen**: Transisi orientasi video 100% mulus dengan hardware acceleration.\n7. **Asynchronous Cookie Offloading & V8 Caching**: Kecepatan load awal divalidasi dengan pre-warming engine asinkron saat startup.\n\nUnduh file APK di bawah ini untuk menikmati penjelajahan super cepat!",
+  "draft": false,
+  "prerelease": false
+}
