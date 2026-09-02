@@ -70,7 +70,6 @@ fun Omnibox(
     activeScriptsCount: Int,
     blockedAdsCount: Int = 0,
     isAdBlockEnabled: Boolean = true,
-    favicon: android.graphics.Bitmap? = null,
     onUrlSubmit: (String) -> Unit,
     onUrlChange: (String) -> Unit,
     onRefresh: () -> Unit,
@@ -130,7 +129,7 @@ fun Omnibox(
                         .padding(horizontal = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Security / Protocol / Favicon Icon
+                    // Security / Protocol Icon
                     Box(
                         modifier = Modifier
                             .size(24.dp)
@@ -138,22 +137,12 @@ fun Omnibox(
                             .clickable(onClick = onSecurityIconClick),
                         contentAlignment = Alignment.Center
                     ) {
-                        if (favicon != null) {
-                            Image(
-                                bitmap = favicon.asImageBitmap(),
-                                contentDescription = "Site Icon",
-                                modifier = Modifier
-                                    .size(16.dp)
-                                    .clip(RoundedCornerShape(3.dp))
-                            )
-                        } else {
-                            Icon(
-                                imageVector = if (isHttps) Icons.Default.Lock else Icons.Default.Public,
-                                contentDescription = if (isHttps) "Koneksi Aman SSL" else "Web",
-                                tint = if (isHttps) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
+                        Icon(
+                            imageVector = if (isHttps) Icons.Default.Lock else Icons.Default.Public,
+                            contentDescription = if (isHttps) "Koneksi Aman SSL" else "Web",
+                            tint = if (isHttps) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(16.dp)
+                        )
                     }
 
                     Spacer(modifier = Modifier.width(6.dp))

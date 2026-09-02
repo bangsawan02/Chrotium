@@ -233,10 +233,17 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                             isDesktopMode = it.isDesktopMode
                         )
                     }
+                    val savedActiveId = settingsPrefs.getString("active_tab_id", null)
+                    val activeId = if (savedActiveId != null && restoredTabs.any { it.id == savedActiveId }) {
+                        savedActiveId
+                    } else {
+                        restoredTabs.first().id
+                    }
+                    val activeTab = restoredTabs.find { it.id == activeId } ?: restoredTabs.first()
                     _uiState.value = _uiState.value.copy(
                         tabs = restoredTabs,
-                        activeTabId = restoredTabs.first().id,
-                        omniboxText = restoredTabs.first().url.let { url -> if (url == "about:blank") "" else url }
+                        activeTabId = activeId,
+                        omniboxText = activeTab.url.let { url -> if (url == "about:blank") "" else url }
                     )
                 }
             } catch (e: Exception) {
@@ -260,6 +267,14 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                     repository.saveTabSessions(sessions)
                 } catch (e: Exception) {
                     // Ignore background save errors
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            _uiState.map { it.activeTabId }.distinctUntilChanged().collectLatest { activeId ->
+                if (activeId.isNotBlank()) {
+                    settingsPrefs.edit().putString("active_tab_id", activeId).apply()
                 }
             }
         }
@@ -300,7 +315,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun onPageStarted(url: String, tabId: String? = null) {
-        updateTabById(tabId) { it.copy(url = url, isLoading = true, progress = 15, blockedRequestsCount = 0, favicon = null) }
+        updateTabById(tabId) { it.copy(url = url, isLoading = true, progress = 15, blockedRequestsCount = 0) }
         if (tabId == null || tabId == _uiState.value.activeTabId) {
             _uiState.value = _uiState.value.copy(omniboxText = if (url == "about:blank") "" else url)
             checkBookmarkStatus(url)
@@ -369,11 +384,6 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun onProgressChanged(progress: Int, tabId: String? = null) {
         updateTabById(tabId) { it.copy(progress = progress, isLoading = progress < 100) }
-    }
-
-    fun onFaviconReceived(icon: android.graphics.Bitmap?, tabId: String? = null) {
-        if (icon == null) return
-        updateTabById(tabId) { it.copy(favicon = icon) }
     }
 
     fun onNavigationStateChanged(canGoBack: Boolean, canGoForward: Boolean, tabId: String? = null) {

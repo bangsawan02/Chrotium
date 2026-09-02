@@ -198,7 +198,6 @@ fun BrowserWebView(
     onPageStarted: (String) -> Unit,
     onPageFinished: (String, String?) -> Unit,
     onProgressChanged: (Int) -> Unit,
-    onFaviconReceived: (Bitmap?) -> Unit = {},
     onNavigationStateChanged: (Boolean, Boolean) -> Unit,
     onScriptsExecuted: (List<String>) -> Unit,
     onScriptInjected: (UserScript) -> Unit,
@@ -535,9 +534,6 @@ fun BrowserWebView(
                     view?.settings?.userAgentString = com.example.engine.WebConfig.getCustomUserAgent(safeUrl, tab.isDesktopMode)
 
                     onPageStarted(safeUrl)
-                    if (favicon != null) {
-                        onFaviconReceived(favicon)
-                    }
 
                     view?.let { wv ->
                         injectPageEnhancements(wv, safeUrl, isAuth, tab.isH264ifyEnabled, tab.isDesktopMode, adBlockEngine)
@@ -728,13 +724,6 @@ fun BrowserWebView(
                     if (newProgress >= 100) {
                         view?.post {
                         }
-                    }
-                }
-
-                override fun onReceivedIcon(view: WebView?, icon: Bitmap?) {
-                    super.onReceivedIcon(view, icon)
-                    if (icon != null) {
-                        onFaviconReceived(icon)
                     }
                 }
 

@@ -593,22 +593,12 @@ private fun TabListCard(
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                if (tab.favicon != null && !isHome) {
-                    Image(
-                        bitmap = tab.favicon.asImageBitmap(),
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(20.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                    )
-                } else {
-                    Icon(
-                        imageVector = if (isHome) Icons.Default.Home else Icons.Default.Language,
-                        contentDescription = null,
-                        tint = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+                Icon(
+                    imageVector = if (isHome) Icons.Default.Home else Icons.Default.Language,
+                    contentDescription = null,
+                    tint = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp)
+                )
             }
 
             Spacer(modifier = Modifier.width(10.dp))
@@ -858,22 +848,12 @@ private fun TabGridCard(
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (tab.favicon != null && !isHome) {
-                        Image(
-                            bitmap = tab.favicon.asImageBitmap(),
-                            contentDescription = null,
-                            modifier = Modifier
-                                .size(16.dp)
-                                .clip(RoundedCornerShape(3.dp))
-                        )
-                    } else {
-                        Icon(
-                            imageVector = if (isHome) Icons.Default.Home else Icons.Default.Language,
-                            contentDescription = null,
-                            tint = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(15.dp)
-                        )
-                    }
+                    Icon(
+                        imageVector = if (isHome) Icons.Default.Home else Icons.Default.Language,
+                        contentDescription = null,
+                        tint = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(15.dp)
+                    )
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
