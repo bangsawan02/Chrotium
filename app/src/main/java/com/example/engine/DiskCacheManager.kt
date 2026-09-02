@@ -41,32 +41,9 @@ object DiskCacheManager {
     }
 
     fun shouldInterceptRequest(request: WebResourceRequest): WebResourceResponse? {
-        if (request.method != "GET") return null
-        
-        val urlString = request.url.toString()
-        if (!isStaticAsset(urlString)) return null
-
-        val cacheFile = getCacheFile(urlString) ?: return null
-
-        if (cacheFile.exists() && cacheFile.length() > 0) {
-            // Cache Hit!
-            val mimeType = getMimeType(urlString)
-            try {
-                // Prepare response headers to tell WebView this is heavily cached
-                val response = WebResourceResponse(mimeType, "UTF-8", FileInputStream(cacheFile))
-                val headers = mutableMapOf(
-                    "Cache-Control" to "public, max-age=31536000",
-                    "Access-Control-Allow-Origin" to "*"
-                )
-                response.responseHeaders = headers
-                return response
-            } catch (e: Exception) {
-                // Ignore, fallback to network
-            }
-        }
-
-        // Download, cache, and serve
-        return downloadAndCache(urlString, cacheFile)
+        // Let Chromium's native high-performance cache (with HTTP/2, HTTP/3, cookies, TLS 1.3, Brotli/Gzip)
+        // handle all requests natively without blocking threads or dropping authenticated assets.
+        return null
     }
 
     private fun isStaticAsset(url: String): Boolean {

@@ -51,10 +51,6 @@ class MainActivity : ComponentActivity() {
     val adBlockEngine = com.example.engine.AdBlockEngine(this)
     swController.setServiceWorkerClient(object : android.webkit.ServiceWorkerClient() {
       override fun shouldInterceptRequest(request: android.webkit.WebResourceRequest): android.webkit.WebResourceResponse? {
-        // Serve from disk cache if possible
-        val cachedResponse = com.example.engine.DiskCacheManager.shouldInterceptRequest(request)
-        if (cachedResponse != null) return cachedResponse
-
         // Content blocker for ads and tracking domains in Service Workers
         if (adBlockEngine.shouldBlockRequest(request, null)) {
           return adBlockEngine.createEmptyResourceResponse()

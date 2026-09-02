@@ -522,12 +522,6 @@ fun BrowserWebView(
                             onAdBlocked()
                             return adBlockEngine.createEmptyResourceResponse()
                         }
-                        
-                        // Aggressive Disk Cache for static assets
-                        val cachedResponse = com.example.engine.DiskCacheManager.shouldInterceptRequest(request)
-                        if (cachedResponse != null) {
-                            return cachedResponse
-                        }
                     }
                     return super.shouldInterceptRequest(view, request)
                 }

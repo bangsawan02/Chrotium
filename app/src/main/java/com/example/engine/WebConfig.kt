@@ -166,13 +166,11 @@ object WebConfig {
                 var overflowStyle = document.createElement('style');
                 overflowStyle.id = 'chrotium-anti-overflow';
                 overflowStyle.textContent = `
-                    img, video, canvas, svg {
-                        max-width: 100% !important;
-                        box-sizing: border-box !important;
+                    img, video {
+                        max-width: 100%;
                     }
-                    p, h1, h2, h3, h4, h5, h6, span, blockquote {
-                        overflow-wrap: break-word !important;
-                        word-break: break-word !important;
+                    p, h1, h2, h3, h4, h5, h6, blockquote {
+                        overflow-wrap: break-word;
                     }
                 `;
                 (document.head || document.documentElement).appendChild(overflowStyle);

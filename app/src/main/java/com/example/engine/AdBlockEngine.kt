@@ -191,16 +191,11 @@ class AdBlockEngine(private val context: Context) {
 
     // Fast keyword signatures for trackers, analytics, telemetry, and ad endpoints
     private val blockedUrlKeywords = arrayOf(
-        "/ads/", "/ads.", "/ad.", "/ad_", "/ad/",
         "/pagead/", "/popunder", "/banner_ad",
-        "/telemetry/", "/tracker/", "/pixel/",
         "fbevents.js", "gtag/js?id=", "analytics.js",
-        "ad_service", "advertising", "advertisement",
-        "/collect?v=", "google-analytics", "doubleclick",
-        "play.google.com/log", "google-analytics.com",
-        "youtube.com/api/stats/watchtime", "api/stats/qoe",
-        "api/stats/atr", "youtube.com/api/stats/delayplay",
-        "stats/watchtime", "/log?format=json", "/log/event"
+        "ad_service", "/collect?v=", "google-analytics.com",
+        "doubleclick.net", "youtube.com/api/stats/watchtime",
+        "api/stats/qoe", "api/stats/atr", "youtube.com/api/stats/delayplay"
     )
 
     init {
@@ -317,7 +312,12 @@ class AdBlockEngine(private val context: Context) {
             return true
         }
 
-        // 2. Pemindaian kata kunci URL (Case-insensitive langsung tanpa alokasi lowercase baru)
+        // 2. Jangan blokir request utama halaman atau request first-party dari domain yang sama via URL pattern
+        if (request.isForMainFrame || host == pageHost) {
+            return false
+        }
+
+        // 3. Pemindaian kata kunci URL untuk third-party tracker
         if (currentStats.isTrackerBlockingEnabled) {
             if (isUrlPatternBlocked(fullUrl)) {
                 recordBlockedRequest(fullUrl)
