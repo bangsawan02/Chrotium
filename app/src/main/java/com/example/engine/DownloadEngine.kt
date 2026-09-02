@@ -63,7 +63,7 @@ class DownloadEngine(
         mimeType: String?,
         fileName: String? = "downloaded_file"
     ) {
-        val finalFileName = fileName ?: "downloaded_file"
+        val finalFileName = (fileName ?: "downloaded_file").replace(Regex("[\\\\/:*?\"<>|]"), "_")
         val finalMimeType = mimeType ?: "application/octet-stream"
         
         CoroutineScope(Dispatchers.IO).launch {
@@ -71,37 +71,31 @@ class DownloadEngine(
                 val data = base64Data.substringAfter("base64,")
                 val bytes = Base64.decode(data, Base64.DEFAULT)
                 
-                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                if (!downloadsDir.exists()) {
-                    downloadsDir.mkdirs()
-                }
+                val (outputStream, uriString) = com.example.util.StorageHelper.getOutputStreamForDownload(
+                    context,
+                    finalFileName,
+                    finalMimeType
+                )
                 
-                var file = File(downloadsDir, finalFileName)
-                var counter = 1
-                val nameWithoutExt = file.nameWithoutExtension
-                val ext = file.extension
-                val extSuffix = if (ext.isNotEmpty()) ".$ext" else ""
-                
-                while (file.exists()) {
-                    file = File(downloadsDir, "$nameWithoutExt ($counter)$extSuffix")
-                    counter++
-                }
-                
-                FileOutputStream(file).use { it.write(bytes) }
-                
-                try {
-                    val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-                    downloadManager.addCompletedDownload(
-                        file.name,
-                        file.name,
-                        true,
-                        finalMimeType,
-                        file.absolutePath,
-                        file.length(),
-                        true
-                    )
-                } catch (e: Exception) {
-                    e.printStackTrace()
+                if (outputStream != null) {
+                    outputStream.use { it.write(bytes) }
+                    com.example.util.StorageHelper.finalizeDownload(context, uriString)
+                } else {
+                    // Fallback for older legacy storage or when MediaStore is unavailable
+                    val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                    if (!downloadsDir.exists()) {
+                        downloadsDir.mkdirs()
+                    }
+                    var file = File(downloadsDir, finalFileName)
+                    var counter = 1
+                    val nameWithoutExt = file.nameWithoutExtension
+                    val ext = file.extension
+                    val extSuffix = if (ext.isNotEmpty()) ".$ext" else ""
+                    while (file.exists()) {
+                        file = File(downloadsDir, "$nameWithoutExt ($counter)$extSuffix")
+                        counter++
+                    }
+                    FileOutputStream(file).use { it.write(bytes) }
                 }
                 
                 CoroutineScope(Dispatchers.Main).launch {
@@ -110,7 +104,7 @@ class DownloadEngine(
             } catch (e: Exception) {
                 e.printStackTrace()
                 CoroutineScope(Dispatchers.Main).launch {
-                    Toast.makeText(context, "Failed to save file", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Failed to save file: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
                 }
             }
         }

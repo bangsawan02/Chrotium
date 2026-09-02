@@ -26,8 +26,20 @@ class BrowserRepository(context: Context) {
     val allHistory: Flow<List<HistoryItem>> = _allHistory.asStateFlow()
 
     suspend fun refreshData() = withContext(Dispatchers.IO) {
+        refreshScripts()
+        refreshBookmarks()
+        refreshHistory()
+    }
+
+    suspend fun refreshScripts() = withContext(Dispatchers.IO) {
         _allScripts.value = dbHelper.getUserScripts()
+    }
+
+    suspend fun refreshBookmarks() = withContext(Dispatchers.IO) {
         _allBookmarks.value = dbHelper.getBookmarks()
+    }
+
+    suspend fun refreshHistory() = withContext(Dispatchers.IO) {
         _allHistory.value = dbHelper.getHistory()
     }
 
@@ -42,15 +54,15 @@ class BrowserRepository(context: Context) {
     suspend fun initializePresetsIfEmpty(prefs: android.content.SharedPreferences? = null) = withContext(Dispatchers.IO) {
         val alreadyInitialized = prefs?.getBoolean("pref_userscripts_first_run_done", false) ?: false
         if (alreadyInitialized) {
-            if (_allScripts.value.isEmpty()) refreshData()
+            refreshData()
             return@withContext
         }
 
         val scripts = dbHelper.getUserScripts()
         if (scripts.isEmpty()) {
             PreinstalledScripts.getDefaultScripts().forEach { dbHelper.insertUserScript(it) }
-            refreshData()
         }
+        refreshData()
         prefs?.edit()?.putBoolean("pref_userscripts_first_run_done", true)?.apply()
     }
 
@@ -60,20 +72,20 @@ class BrowserRepository(context: Context) {
 
     suspend fun insertScript(script: UserScript): Long = withContext(Dispatchers.IO) {
         dbHelper.insertUserScript(script)
-        refreshData()
+        refreshScripts()
         0L // Returning 0 as ID mapping is handled internally
     }
 
     suspend fun updateScript(script: UserScript) = withContext(Dispatchers.IO) {
         dbHelper.updateUserScript(script)
-        refreshData()
+        refreshScripts()
     }
 
     suspend fun toggleScript(id: Long, isEnabled: Boolean) = withContext(Dispatchers.IO) {
         val script = dbHelper.getUserScripts().find { it.id == id }
         if (script != null) {
             dbHelper.updateUserScript(script.copy(isEnabled = isEnabled))
-            refreshData()
+            refreshScripts()
         }
     }
 
@@ -82,14 +94,14 @@ class BrowserRepository(context: Context) {
         scripts.forEach {
             dbHelper.updateUserScript(it.copy(isEnabled = isEnabled))
         }
-        refreshData()
+        refreshScripts()
     }
 
     suspend fun resetDefaultPresets() = withContext(Dispatchers.IO) {
         val scripts = dbHelper.getUserScripts()
         scripts.forEach { dbHelper.deleteUserScript(it) }
         PreinstalledScripts.getDefaultScripts().forEach { dbHelper.insertUserScript(it) }
-        refreshData()
+        refreshScripts()
     }
 
     suspend fun duplicateScript(script: UserScript) = withContext(Dispatchers.IO) {
@@ -99,19 +111,19 @@ class BrowserRepository(context: Context) {
             createdAt = System.currentTimeMillis()
         )
         dbHelper.insertUserScript(copy)
-        refreshData()
+        refreshScripts()
     }
 
     suspend fun deleteScript(script: UserScript) = withContext(Dispatchers.IO) {
         dbHelper.deleteUserScript(script)
-        refreshData()
+        refreshScripts()
     }
 
     suspend fun deleteScriptById(id: Long) = withContext(Dispatchers.IO) {
         val script = dbHelper.getUserScripts().find { it.id == id }
         if (script != null) {
             dbHelper.deleteUserScript(script)
-            refreshData()
+            refreshScripts()
         }
     }
 
@@ -119,7 +131,7 @@ class BrowserRepository(context: Context) {
         val script = dbHelper.getUserScripts().find { it.id == id }
         if (script != null) {
             dbHelper.updateUserScript(script.copy(executionCount = script.executionCount + 1, lastExecutedTimestamp = System.currentTimeMillis()))
-            refreshData()
+            refreshScripts()
         }
     }
 
@@ -135,23 +147,23 @@ class BrowserRepository(context: Context) {
         } else {
             dbHelper.insertBookmark(Bookmark(title = title, url = url))
         }
-        refreshData()
+        refreshBookmarks()
     }
 
     suspend fun deleteBookmark(bookmark: Bookmark) = withContext(Dispatchers.IO) {
         dbHelper.deleteBookmark(bookmark)
-        refreshData()
+        refreshBookmarks()
     }
 
     suspend fun addHistory(title: String, url: String) = withContext(Dispatchers.IO) {
         if (url.isNotBlank() && !url.startsWith("about:")) {
             dbHelper.insertHistory(HistoryItem(title = title.ifBlank { url }, url = url))
-            refreshData()
+            refreshHistory()
         }
     }
 
     suspend fun clearHistory() = withContext(Dispatchers.IO) {
         dbHelper.clearHistory()
-        refreshData()
+        refreshHistory()
     }
 }

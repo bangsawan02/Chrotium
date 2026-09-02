@@ -90,8 +90,8 @@ class BackgroundPlayWebView(context: Context) : WebView(context) {
     }
 
     override fun onWindowVisibilityChanged(visibility: Int) {
-        // Jika Background Play aktif, selalu pertahankan visibilitas VISIBLE agar WebView tidak mati saat berpindah lagu di background / YouTube Mix.
-        if (isBackgroundPlayEnabled) {
+        // Hanya pertahankan VISIBLE jika tab memang terlihat atau sedang memutar media di background
+        if (visibility == android.view.View.VISIBLE || (isBackgroundPlayEnabled && isMediaPlaying)) {
             super.onWindowVisibilityChanged(android.view.View.VISIBLE)
         } else {
             super.onWindowVisibilityChanged(visibility)
@@ -99,7 +99,7 @@ class BackgroundPlayWebView(context: Context) : WebView(context) {
     }
 
     override fun onVisibilityChanged(changedView: android.view.View, visibility: Int) {
-        if (isBackgroundPlayEnabled) {
+        if (visibility == android.view.View.VISIBLE || (isBackgroundPlayEnabled && isMediaPlaying)) {
             super.onVisibilityChanged(changedView, android.view.View.VISIBLE)
         } else {
             super.onVisibilityChanged(changedView, visibility)
@@ -172,12 +172,7 @@ class ChrotiumInterface(
                 onMediaStatusChanged(isPlaying)
 
                 // Keep screen awake while watching video in foreground
-                val activity = webView.context as? android.app.Activity
-                if (isPlaying && webView.visibility == android.view.View.VISIBLE) {
-                    activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                } else {
-                    activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                }
+                webView.keepScreenOn = isPlaying && webView.visibility == android.view.View.VISIBLE
             }
         }
     }
@@ -458,6 +453,8 @@ fun BrowserWebView(
                     webView = this,
                     onDownload = { downloadUrl, customFilename ->
                         if (downloadUrl.startsWith("blob:")) {
+                            val safeName = (customFilename ?: "download").replace("\\", "\\\\").replace("'", "\\'").replace("\n", "").replace("\r", "")
+                            val apkMime = if (downloadUrl.endsWith(".apk", true)) "application/vnd.android.package-archive" else "application/octet-stream"
                             val js = """
                                 (function() {
                                     var cachedBlob = window.__chrotium_blobs && window.__chrotium_blobs['$downloadUrl'];
@@ -465,7 +462,7 @@ fun BrowserWebView(
                                         var reader = new FileReader();
                                         reader.onloadend = function() {
                                             if (window.ChrotiumInterface && typeof window.ChrotiumInterface.saveBlobDownload === 'function') {
-                                                window.ChrotiumInterface.saveBlobDownload(reader.result, '${customFilename ?: "download"}', cachedBlob.type || 'application/octet-stream');
+                                                window.ChrotiumInterface.saveBlobDownload(reader.result, '$safeName', cachedBlob.type || 'application/octet-stream');
                                             }
                                         };
                                         reader.readAsDataURL(cachedBlob);
@@ -477,7 +474,7 @@ fun BrowserWebView(
                                             var reader = new FileReader();
                                             reader.onloadend = function() {
                                                 if (window.ChrotiumInterface && typeof window.ChrotiumInterface.saveBlobDownload === 'function') {
-                                                    window.ChrotiumInterface.saveBlobDownload(reader.result, '${customFilename ?: "download"}', '${if (downloadUrl.endsWith(".apk", true)) "application/vnd.android.package-archive" else "application/octet-stream"}');
+                                                    window.ChrotiumInterface.saveBlobDownload(reader.result, '$safeName', '$apkMime');
                                                 }
                                             };
                                             reader.readAsDataURL(blob);
@@ -622,6 +619,11 @@ fun BrowserWebView(
                     view?.settings?.userAgentString = com.example.engine.WebConfig.getCustomUserAgent(urlStr, tab.isDesktopMode)
 
                     if (scheme == "http" || scheme == "https" || scheme == "about") {
+                        val cleanedUrl = adBlockEngine.cleanTrackingParameters(urlStr)
+                        if (cleanedUrl != urlStr) {
+                            view?.loadUrl(cleanedUrl)
+                            return true
+                        }
                         return false
                     }
 
@@ -683,13 +685,28 @@ fun BrowserWebView(
                     // Handle external intents (mailto, tel, intent:, etc.)
                     return try {
                         val intent = Intent.parseUri(urlStr, Intent.URI_INTENT_SCHEME)
+                        intent.addCategory(Intent.CATEGORY_BROWSABLE)
+                        intent.component = null
+                        intent.selector = null
                         context.startActivity(intent)
                         true
                     } catch (e: Exception) {
                         try {
-                            val fallbackIntent = Intent(Intent.ACTION_VIEW, uri)
-                            context.startActivity(fallbackIntent)
-                            true
+                            val intent = Intent.parseUri(urlStr, Intent.URI_INTENT_SCHEME)
+                            val fallbackUrl = intent.getStringExtra("browser_fallback_url")
+                            if (!fallbackUrl.isNullOrBlank()) {
+                                view?.loadUrl(fallbackUrl)
+                                true
+                            } else {
+                                val pkg = intent.getPackage()
+                                if (!pkg.isNullOrBlank()) {
+                                    val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$pkg"))
+                                    context.startActivity(marketIntent)
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
                         } catch (_: Exception) {
                             false
                         }
@@ -832,6 +849,8 @@ fun BrowserWebView(
                                 } else {
                                     "download_${System.currentTimeMillis()}"
                                 }
+                                val safeGuessed = guessedName.replace("\\", "\\\\").replace("'", "\\'")
+                                val safeMime = (mimetype ?: "application/octet-stream").replace("'", "")
                                 val js = """
                                     (function() {
                                         var cachedBlob = window.__chrotium_blobs && window.__chrotium_blobs['$url'];
@@ -839,7 +858,7 @@ fun BrowserWebView(
                                             var reader = new FileReader();
                                             reader.onloadend = function() {
                                                 if (window.ChrotiumInterface && typeof window.ChrotiumInterface.saveBlobDownload === 'function') {
-                                                    window.ChrotiumInterface.saveBlobDownload(reader.result, '$guessedName', cachedBlob.type || '${mimetype ?: "application/octet-stream"}');
+                                                    window.ChrotiumInterface.saveBlobDownload(reader.result, '$safeGuessed', cachedBlob.type || '$safeMime');
                                                 }
                                             };
                                             reader.readAsDataURL(cachedBlob);
@@ -851,7 +870,7 @@ fun BrowserWebView(
                                                 var reader = new FileReader();
                                                 reader.onloadend = function() {
                                                     if (window.ChrotiumInterface && typeof window.ChrotiumInterface.saveBlobDownload === 'function') {
-                                                        window.ChrotiumInterface.saveBlobDownload(reader.result, '$guessedName', '${mimetype ?: "application/octet-stream"}');
+                                                        window.ChrotiumInterface.saveBlobDownload(reader.result, '$safeGuessed', '$safeMime');
                                                     }
                                                 };
                                                 reader.readAsDataURL(blob);
@@ -864,9 +883,9 @@ fun BrowserWebView(
                                 evaluateJavascript(js, null)
                             } else {
                                 onDownloadRequested(url, userAgent, contentDisposition, mimetype)
+                                popupWebView = null
+                                destroy()
                             }
-                            popupWebView = null
-                            destroy()
                         }
 
                         // Hubungkan antarmuka JavaScript internal untuk mendeteksi unduhan di popup
@@ -1159,12 +1178,14 @@ fun BrowserWebView(
 
 
     // Tab Memory & CPU Management: Freeze background tabs when not playing media, unfreeze on focus
-    LaunchedEffect(isVisible, webView.isMediaPlaying, webView.isBackgroundPlayEnabled) {
+    LaunchedEffect(isVisible, webView.isMediaPlaying) {
         if (isVisible) {
             webView.onResume()
         } else {
-            if (!webView.isMediaPlaying && !webView.isBackgroundPlayEnabled) {
+            if (!webView.isMediaPlaying) {
                 webView.onPause()
+            } else {
+                webView.onResume()
             }
         }
     }
@@ -1174,7 +1195,10 @@ fun BrowserWebView(
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             when (event) {
                 androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> {
-                    // Sesuai instruksi: Jangan panggil webView.onPause() saat app masuk background agar playback media terus berjalan
+                    // Hanya pause WebView jika tidak sedang memutar media agar background audio tetap jalan
+                    if (!webView.isMediaPlaying) {
+                        webView.onPause()
+                    }
                 }
                 androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
                     if (isVisible) {
@@ -1194,6 +1218,14 @@ fun BrowserWebView(
     DisposableEffect(tab.id) {
         onDispose {
             try {
+                // Cancel pending dialogs so renderer process does not hang
+                jsAlertData?.result?.cancel()
+                jsAlertData = null
+                jsConfirmData?.result?.cancel()
+                jsConfirmData = null
+                jsPromptData?.result?.cancel()
+                jsPromptData = null
+
                 (webView.parent as? ViewGroup)?.removeView(webView)
                 webView.apply {
                     stopLoading()
@@ -1207,12 +1239,8 @@ fun BrowserWebView(
         }
     }
 
-    // Handle system back navigation to navigate back in web history
-    BackHandler(enabled = webView.canGoBack() && customView == null) {
-        webView.goBack()
-    }
-
-    if (customView != null) {
+    // Handle full screen exit on back navigation only when tab is visible
+    if (isVisible && customView != null) {
         BackHandler {
             customViewCallback?.onCustomViewHidden()
             customView = null

@@ -302,12 +302,13 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         // Sembunyikan saran saat navigasi
         dismissSuggestions()
 
-        val finalUrl = when {
+        val resolvedUrl = when {
             trimmed.startsWith("http://", ignoreCase = true) || trimmed.startsWith("https://", ignoreCase = true) -> trimmed
             trimmed.startsWith("about:", ignoreCase = true) -> trimmed
             trimmed.contains(".") && !trimmed.contains(" ") -> "https://$trimmed"
             else -> _uiState.value.searchEngine.searchUrl + java.net.URLEncoder.encode(trimmed, "UTF-8")
         }
+        val finalUrl = adBlockEngine.cleanTrackingParameters(resolvedUrl)
 
         updateActiveTab { it.copy(url = finalUrl, isLoading = true, progress = 10) }
         _uiState.value = _uiState.value.copy(omniboxText = finalUrl, isOmniboxFocused = false)
