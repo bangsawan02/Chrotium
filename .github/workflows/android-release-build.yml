@@ -28,15 +28,13 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Grant execute permission for scripts
-      run: |
-        chmod +x build_manual_sdk.sh
-        if [ -f gradlew ]; then chmod +x gradlew; fi
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
 
-    - name: Setup Android SDK Environment
-      run: |
-        echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-$ANDROID_HOME}" >> $GITHUB_ENV
-        echo "ANDROID_HOME=${ANDROID_HOME:-$ANDROID_SDK_ROOT}" >> $GITHUB_ENV
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+      with:
+        validate-wrappers: false
 
     - name: Restore Keystore Files
       run: |
@@ -61,8 +59,14 @@ jobs:
           cp .env.example .env
         fi
 
-    - name: Build APK via Manual SDK Toolchain (AAPT2 + D8 + Zipalign + Apksigner)
-      run: ./build_manual_sdk.sh
+    - name: Build Release APK via Gradle
+      run: ./gradlew :app:assembleRelease -x lint -x lintVitalRelease -x test --parallel --build-cache --configuration-cache
+
+    - name: Copy Release APK to Root
+      run: |
+        if [ -f app/build/outputs/apk/release/app-release.apk ]; then
+          cp app/build/outputs/apk/release/app-release.apk Chrotium.apk
+        fi
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
@@ -71,6 +75,5 @@ jobs:
         name: chrotium-release-apk
         path: |
           Chrotium.apk
-          Chrotium-SDK-Manual.apk
           app/build/outputs/apk/release/*.apk
         if-no-files-found: warn
