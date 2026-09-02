@@ -17,9 +17,18 @@ echo -e "${BLUE}    Manual SDK Toolchain Build Pipeline              ${NC}"
 echo -e "${BLUE}    (aapt2 -> d8 -> zipalign -> apksigner)           ${NC}"
 echo -e "${BLUE}=====================================================${NC}"
 
-SDK_DIR="${ANDROID_SDK_ROOT:-/opt/android/sdk}"
-BUILD_TOOLS_DIR="$SDK_DIR/build-tools/36.0.0"
-PLATFORM_JAR="$SDK_DIR/platforms/android-35/android.jar"
+SDK_DIR="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/opt/android/sdk}}"
+if [ ! -d "$SDK_DIR" ] && [ -d "/usr/local/lib/android/sdk" ]; then
+    SDK_DIR="/usr/local/lib/android/sdk"
+fi
+
+BUILD_TOOLS_DIR=$(find "$SDK_DIR/build-tools" -maxdepth 1 -mindepth 1 2>/dev/null | sort -V | tail -n 1)
+PLATFORM_JAR=$(find "$SDK_DIR/platforms" -name "android.jar" 2>/dev/null | sort -V | tail -n 1)
+
+if [ -z "$BUILD_TOOLS_DIR" ] || [ -z "$PLATFORM_JAR" ]; then
+    echo -e "${RED}[!] Android SDK Build Tools atau android.jar tidak ditemukan di $SDK_DIR${NC}"
+    exit 1
+fi
 
 AAPT2="$BUILD_TOOLS_DIR/aapt2"
 D8="$BUILD_TOOLS_DIR/d8"
@@ -63,8 +72,12 @@ KOTLIN_SRC="app/build/tmp/kotlin-classes/release"
 
 if [ ! -d "$KOTLIN_SRC" ]; then
     echo -e "${YELLOW}[i] Menyiapkan class files bytecode untuk pemrosesan D8...${NC}"
-    # Jalankan kompilasi bytecode Kotlin/Java
-    gradle :app:compileReleaseKotlin :app:compileReleaseJavaWithJavac --no-daemon -q
+    if command -v gradle >/dev/null 2>&1; then
+        gradle :app:compileReleaseKotlin :app:compileReleaseJavaWithJavac --no-daemon -q
+    elif [ -f "./gradlew" ]; then
+        chmod +x ./gradlew
+        ./gradlew :app:compileReleaseKotlin :app:compileReleaseJavaWithJavac --no-daemon -q
+    fi
 fi
 
 # Cari seluruh runtime JAR dependency
@@ -110,5 +123,10 @@ fi
     "$WORK_DIR/aligned.apk"
 
 "$APKSIGNER" verify "Chrotium-SDK-Manual.apk"
+cp -f "Chrotium-SDK-Manual.apk" "Chrotium.apk"
+mkdir -p "app/build/outputs/apk/release"
+cp -f "Chrotium-SDK-Manual.apk" "app/build/outputs/apk/release/Chrotium-release.apk"
+cp -f "Chrotium-SDK-Manual.apk" "app/build/outputs/apk/release/Chrotium-v3.8.7.apk"
+
 echo -e "${GREEN}[✓] APK Berhasil ditandatangani dan diverifikasi oleh apksigner!${NC}"
-echo -e "${BLUE}Output File: Chrotium-SDK-Manual.apk ($(du -sh Chrotium-SDK-Manual.apk | cut -f1))${NC}"
+echo -e "${BLUE}Output File: Chrotium-SDK-Manual.apk & Chrotium.apk ($(du -sh Chrotium-SDK-Manual.apk | cut -f1))${NC}"
