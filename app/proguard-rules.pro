@@ -36,6 +36,11 @@
 # --------------------------------------------------------------------
 -keepnames class kotlinx.coroutines.** { *; }
 -keepclassmembers class kotlinx.coroutines.** { *; }
+-keep class kotlinx.coroutines.android.AndroidDispatcherFactory { *; }
+-keep class kotlinx.coroutines.internal.MainDispatcherFactory { *; }
+-keep class * implements kotlinx.coroutines.internal.MainDispatcherFactory { *; }
+-keep class * implements kotlinx.coroutines.CoroutineExceptionHandler { *; }
+-keep class kotlinx.coroutines.CoroutineExceptionHandler { *; }
 
 # --------------------------------------------------------------------
 # 6. General Attributes & Stacktrace Preservation

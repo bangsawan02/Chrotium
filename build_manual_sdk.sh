@@ -104,16 +104,36 @@ fi
 
 echo -e "${GREEN}[✓] File DEX berhasil dihasilkan oleh D8.${NC}"
 
-# 3. Penggabungan DEX ke dalam Base APK
-echo -e "${YELLOW}[4/5] Menggabungkan classes.dex ke dalam package APK...${NC}"
+# 3. Penggabungan DEX dan Java ServiceLoader Resources ke dalam Base APK
+echo -e "${YELLOW}[4/5] Menggabungkan classes.dex dan ServiceLoader resources ke dalam package APK...${NC}"
 cp "$WORK_DIR/base_res.apk" "$WORK_DIR/unaligned.apk"
-cd "$WORK_DIR/dex"
-if command -v zip >/dev/null 2>&1; then
-    zip -u -q "../unaligned.apk" classes*.dex
-else
-    python3 -c "import zipfile, glob; z = zipfile.ZipFile('../unaligned.apk', 'a'); [z.write(f, f) for f in glob.glob('classes*.dex')]; z.close()"
+
+# Ekstrak merged java resources jika ada (khususnya META-INF/services/ untuk Coroutines MainDispatcher)
+JAVA_RES_JAR=$(find app/build/intermediates/merged_java_res -name "base.jar" 2>/dev/null | head -n 1)
+mkdir -p "$WORK_DIR/java_res/META-INF/services"
+echo "kotlinx.coroutines.android.AndroidDispatcherFactory" > "$WORK_DIR/java_res/META-INF/services/kotlinx.coroutines.internal.MainDispatcherFactory"
+
+if [ -f "$JAVA_RES_JAR" ]; then
+    cd "$WORK_DIR/java_res"
+    jar xf "$(pwd)/../../$JAVA_RES_JAR" 2>/dev/null || true
+    cd - > /dev/null
 fi
-cd - > /dev/null
+
+python3 -c "
+import zipfile, os, glob
+apk_path = os.path.abspath('$WORK_DIR/unaligned.apk')
+with zipfile.ZipFile(apk_path, 'a') as apk:
+    # 1. Tambahkan seluruh classes.dex
+    for dex_file in glob.glob('$WORK_DIR/dex/classes*.dex'):
+        apk.write(dex_file, os.path.basename(dex_file))
+    # 2. Tambahkan META-INF/services dan kotlin builtins
+    for root, dirs, files in os.walk('$WORK_DIR/java_res'):
+        for file in files:
+            full_path = os.path.join(root, file)
+            arcname = os.path.relpath(full_path, '$WORK_DIR/java_res')
+            if arcname.startswith('META-INF/services') or arcname.endswith('.kotlin_builtins'):
+                apk.write(full_path, arcname)
+"
 
 # 4. Zipalign (Optimasi 4-byte boundary)
 echo -e "${YELLOW}[5/5] Menjalankan Zipalign & Apksigner...${NC}"
