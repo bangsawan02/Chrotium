@@ -89,9 +89,15 @@ class BackgroundPlayWebView(context: Context) : WebView(context) {
         onWindowVisibilityChanged(windowVisibility)
     }
 
+    private fun isMediaTabOrPlaying(): Boolean {
+        val currentUrl = url?.lowercase() ?: ""
+        val isYouTube = currentUrl.contains("youtube.com") || currentUrl.contains("youtu.be")
+        return isBackgroundPlayEnabled && (isMediaPlaying || isYouTube)
+    }
+
     override fun onWindowVisibilityChanged(visibility: Int) {
-        // Hanya pertahankan VISIBLE jika tab memang terlihat atau sedang memutar media di background
-        if (visibility == android.view.View.VISIBLE || (isBackgroundPlayEnabled && isMediaPlaying)) {
+        // Hanya pertahankan VISIBLE jika tab memang terlihat atau sedang memutar media/YouTube di background
+        if (visibility == android.view.View.VISIBLE || isMediaTabOrPlaying()) {
             super.onWindowVisibilityChanged(android.view.View.VISIBLE)
         } else {
             super.onWindowVisibilityChanged(visibility)
@@ -99,7 +105,7 @@ class BackgroundPlayWebView(context: Context) : WebView(context) {
     }
 
     override fun onVisibilityChanged(changedView: android.view.View, visibility: Int) {
-        if (visibility == android.view.View.VISIBLE || (isBackgroundPlayEnabled && isMediaPlaying)) {
+        if (visibility == android.view.View.VISIBLE || isMediaTabOrPlaying()) {
             super.onVisibilityChanged(changedView, android.view.View.VISIBLE)
         } else {
             super.onVisibilityChanged(changedView, visibility)
@@ -1182,7 +1188,9 @@ fun BrowserWebView(
         if (isVisible) {
             webView.onResume()
         } else {
-            if (!webView.isMediaPlaying) {
+            val currentUrl = webView.url?.lowercase() ?: ""
+            val isYouTube = currentUrl.contains("youtube.com") || currentUrl.contains("youtu.be")
+            if (!webView.isMediaPlaying && !isYouTube) {
                 webView.onPause()
             } else {
                 webView.onResume()
@@ -1195,8 +1203,10 @@ fun BrowserWebView(
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             when (event) {
                 androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> {
-                    // Hanya pause WebView jika tidak sedang memutar media agar background audio tetap jalan
-                    if (!webView.isMediaPlaying) {
+                    val currentUrl = webView.url?.lowercase() ?: ""
+                    val isYouTube = currentUrl.contains("youtube.com") || currentUrl.contains("youtu.be")
+                    // Hanya pause WebView jika tidak sedang memutar media/YouTube agar background audio tetap jalan
+                    if (!webView.isMediaPlaying && !isYouTube) {
                         webView.onPause()
                     }
                 }

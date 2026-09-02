@@ -276,8 +276,8 @@ object WebConfig {
 
     /**
      * Script untuk memungkinkan pemutaran audio/video di latar belakang (Background Play).
-     * Memalsukan Page Visibility API agar YouTube, Spotify Web, dan situs media lainnya
-     * tidak pernah dijeda saat aplikasi diminimalkan atau layar dimatikan.
+     * Memalsukan Page Visibility API & IntersectionObserver serta memblokir event auto-pause
+     * agar YouTube, YouTube Music, Spotify Web, dan situs media lainnya tidak pernah dijeda saat aplikasi diminimalkan atau layar dimatikan.
      */
     val BACKGROUND_PLAY_SCRIPT = """
         (function() {
@@ -285,8 +285,17 @@ object WebConfig {
             window.__chrotium_bg_play_injected = true;
 
             try {
-                // Track application foreground/background state
                 window.__chrotium_is_background = false;
+                window.__chrotium_last_user_touch = Date.now();
+
+                // Record user interaction timestamps to distinguish manual pauses from auto-pauses
+                function recordUserTouch() {
+                    window.__chrotium_last_user_touch = Date.now();
+                }
+                window.addEventListener('pointerdown', recordUserTouch, true);
+                window.addEventListener('touchstart', recordUserTouch, true);
+                window.addEventListener('click', recordUserTouch, true);
+                window.addEventListener('keydown', recordUserTouch, true);
 
                 // 1. Force Page Visibility API & Document Focus to always report visible/focused
                 try {
@@ -309,21 +318,52 @@ object WebConfig {
                     document.hasFocus = function() { return true; };
                 } catch(e) {}
 
-                // 2. Stop visibilitychange & freeze propagation so YouTube doesn't pause video in background
-                document.addEventListener('visibilitychange', function(e) { 
+                // 2. Stop visibilitychange, blur, focusout, pagehide & freeze propagation so YouTube doesn't pause video
+                function blockVisibilityEvents(e) {
                     window.__chrotium_is_background = true;
-                    if (e) e.stopImmediatePropagation(); 
-                }, true);
-                document.addEventListener('webkitvisibilitychange', function(e) { 
-                    window.__chrotium_is_background = true;
-                    if (e) e.stopImmediatePropagation(); 
-                }, true);
-                window.addEventListener('pagehide', function(e) { 
-                    window.__chrotium_is_background = true;
-                    if (e) e.stopImmediatePropagation(); 
-                }, true);
+                    if (e && typeof e.stopImmediatePropagation === 'function') {
+                        e.stopImmediatePropagation();
+                    }
+                }
+                document.addEventListener('visibilitychange', blockVisibilityEvents, true);
+                document.addEventListener('webkitvisibilitychange', blockVisibilityEvents, true);
+                window.addEventListener('pagehide', blockVisibilityEvents, true);
+                window.addEventListener('blur', blockVisibilityEvents, true);
+                window.addEventListener('focusout', blockVisibilityEvents, true);
+                window.addEventListener('freeze', blockVisibilityEvents, true);
 
-                // 3. Ensure HTMLMediaElement.prototype.play resolves cleanly during YouTube Mix / Playlist auto-advance in background
+                // 3. Override IntersectionObserver so YouTube player element never reports out-of-viewport in background
+                if (window.IntersectionObserver) {
+                    var OrigObserver = window.IntersectionObserver;
+                    var CustomObserver = function(callback, options) {
+                        var wrappedCallback = function(entries, observer) {
+                            var fakeEntries = entries.map(function(entry) {
+                                if (entry && entry.target && (
+                                    entry.target.tagName === 'VIDEO' ||
+                                    entry.target.id === 'movie_player' ||
+                                    (entry.target.classList && entry.target.classList.contains('html5-video-player'))
+                                )) {
+                                    try {
+                                        return new Proxy(entry, {
+                                            get: function(target, prop) {
+                                                if (prop === 'isIntersecting') return true;
+                                                if (prop === 'intersectionRatio') return 1;
+                                                return target[prop];
+                                            }
+                                        });
+                                    } catch(pErr) { return entry; }
+                                }
+                                return entry;
+                            });
+                            return callback(fakeEntries, observer);
+                        };
+                        return new OrigObserver(wrappedCallback, options);
+                    };
+                    CustomObserver.prototype = OrigObserver.prototype;
+                    window.IntersectionObserver = CustomObserver;
+                }
+
+                // 4. Ensure HTMLMediaElement.prototype.play resolves cleanly during playlist/mix auto-advance
                 var origPlay = HTMLMediaElement.prototype.play;
                 HTMLMediaElement.prototype.play = function() {
                     var promise = origPlay.apply(this, arguments);
@@ -333,14 +373,54 @@ object WebConfig {
                     return promise;
                 };
 
-                // 4. Intercept HTMLMediaElement.prototype.pause to completely ignore pause requests while in the background
+                // 5. Intercept HTMLMediaElement.prototype.pause to ignore auto-pauses when in background
                 var origPause = HTMLMediaElement.prototype.pause;
                 HTMLMediaElement.prototype.pause = function() {
-                    if (window.__chrotium_is_background) {
+                    var isUserAction = (Date.now() - (window.__chrotium_last_user_touch || 0)) < 600;
+                    var isBg = document.hidden || window.__chrotium_is_background;
+                    if (!isUserAction && isBg) {
                         return Promise.resolve ? Promise.resolve() : undefined;
                     }
                     return origPause.apply(this, arguments);
                 };
+
+                // 6. Instant Media Status Listener (0ms event response to Android Native)
+                function notifyMediaStatus() {
+                    try {
+                        var isPlaying = false;
+                        var mediaElements = document.querySelectorAll('video, audio');
+                        for (var i = 0; i < mediaElements.length; i++) {
+                            if (!mediaElements[i].paused && !mediaElements[i].ended && mediaElements[i].readyState > 1) {
+                                isPlaying = true;
+                                break;
+                            }
+                        }
+                        if (window.ChrotiumInterface && typeof window.ChrotiumInterface.updateMediaStatus === 'function') {
+                            window.ChrotiumInterface.updateMediaStatus(isPlaying);
+                        }
+                    } catch(e) {}
+                }
+
+                ['play', 'playing', 'pause', 'ended', 'timeupdate', 'ratechange', 'stalled', 'waiting'].forEach(function(evt) {
+                    document.addEventListener(evt, notifyMediaStatus, true);
+                });
+                setInterval(notifyMediaStatus, 1500);
+
+                // 7. Auto-resume safety net for background playback stalling/re-buffering
+                setInterval(function() {
+                    try {
+                        if (window.__chrotium_is_background) {
+                            var videos = document.querySelectorAll('video');
+                            for (var i = 0; i < videos.length; i++) {
+                                var v = videos[i];
+                                if (v.paused && !v.ended && v.currentTime > 0 && (Date.now() - (window.__chrotium_last_user_touch || 0)) > 1000) {
+                                    v.play().catch(function(){});
+                                }
+                            }
+                        }
+                    } catch(e) {}
+                }, 2000);
+
             } catch(e) {
                 console.error('[Chrotium] Background Play injection error:', e);
             }
@@ -348,10 +428,14 @@ object WebConfig {
     """.trimIndent()
 
     /**
-     * Script Optimasi Ringan Khusus untuk Framework Modern SPA & Web Apps (Google AI Studio, Angular, React, Vue, Svelte):
-     * - Eliminasi 300ms tap delay untuk responsivitas seketika.
-     * - Router & SPA URL Synchronization yang efisien tanpa membebani DOM atau CPU.
-     * - Tidak menggunakan subtree MutationObserver agar situs berat (seperti ai.studio) berjalan 60FPS lancar.
+     * Script Engine Optimasi Khusus Performa Tinggi untuk Seluruh Framework Modern SPA & Web Apps
+     * (React, Next.js, Vue, Nuxt, Angular, Svelte, Remix, Vite, HTMX, Solid, Preact, Alpine, Google AI Studio):
+     * - Eliminasi 300ms tap delay (0ms touch response) di semua komponen & tombol SPA.
+     * - DOM Layout Containment (`contain: content`) & GPU Compositing untuk membatasi scope reflow/recalculate style saat rute SPA berganti.
+     * - Content visibility & intrinsic sizing untuk virtual feed & list panjang agar GPU/CPU hemat.
+     * - Smart preconnector & prefetcher otomatis saat tautan disentuh/disorot (zero latency DNS lookup untuk bundle rute & API payload).
+     * - Automatic lazy loading (`loading="lazy"`) & async decoding (`decoding="async"`) pada elemen gambar dinamis SPA.
+     * - Router & SPA URL Synchronization real-time dengan frame painting flush (`requestAnimationFrame`).
      */
     val ANGULAR_SPA_OPTIMIZATION_SCRIPT = """
         (function() {
@@ -359,19 +443,41 @@ object WebConfig {
             window.__chrotium_angular_spa_injected = true;
 
             try {
-                // 1. Injeksi CSS Ringan untuk Touch Response & Kelancaran Scroll
+                // 1. Injeksi Style CSS Khusus Performa & Layout Containment SPA
                 var style = document.createElement('style');
                 style.id = 'chrotium-angular-spa-style';
                 style.textContent = `
-                    /* Eliminasi 300ms tap delay untuk responsivitas tombol seketika (0ms click latency) */
+                    /* Eliminasi 300ms tap delay untuk responsivitas seketika (0ms click latency) di seluruh framework SPA */
                     button, a, input, select, textarea, [role="button"], [role="tab"], [role="menuitem"],
+                    [role="option"], [role="switch"], [role="checkbox"], [role="radio"],
                     [mat-button], [mat-icon-button], [mat-raised-button], [mat-flat-button], [mat-stroked-button],
                     .mat-mdc-button-base, mat-select, mat-checkbox, mat-radio-button, mat-slide-toggle,
                     .p-button, .p-dropdown, .p-checkbox, .p-radiobutton,
                     .v-btn, .v-list-item, .v-select,
-                    ion-button, ion-item, ion-checkbox, ion-toggle, ion-segment-button {
+                    ion-button, ion-item, ion-checkbox, ion-toggle, ion-segment-button,
+                    [class*="btn"], [class*="button"], [class*="card"], [class*="item"], [class*="link"] {
                         touch-action: manipulation !important;
                         -webkit-tap-highlight-color: transparent !important;
+                    }
+
+                    /* DOM Layout Containment & Hardware Compositing untuk SPA View Containers */
+                    main, [role="main"], #app, #root, [data-reactroot], [data-nextjs-scroll-focus-boundary],
+                    .app-container, [router-outlet], .router-view, [class*="layout"], [class*="view-container"] {
+                        contain: content !important;
+                        -webkit-overflow-scrolling: touch !important;
+                    }
+
+                    /* GPU Acceleration Layer Promotion untuk SPA Modals, Overlays, Drawers & Popups */
+                    [role="dialog"], [role="menu"], [role="listbox"], [class*="modal"], [class*="drawer"], [class*="popup"], [class*="dropdown"], [class*="sheet"] {
+                        will-change: transform, opacity !important;
+                        transform: translateZ(0) !important;
+                        backface-visibility: hidden !important;
+                    }
+
+                    /* Optimasi rendering item feed/list panjang dalam SPA (Virtual DOM) */
+                    [class*="virtual-list"] > *, [class*="feed-item"], [class*="list-item"] {
+                        content-visibility: auto;
+                        contain-intrinsic-size: 0 80px;
                     }
                 `;
                 (document.head || document.documentElement).appendChild(style);
@@ -382,7 +488,7 @@ object WebConfig {
                     window.__Zone_enable_cross_context_check = true;
                 }
 
-                // 3. Jembatan Clipboard API untuk Tombol Salin & Tempel (AI Studio, GitHub, Monaco Editor)
+                // 3. Jembatan Clipboard API untuk Tombol Salin & Tempel (AI Studio, GitHub, Monaco Editor, StackOverflow)
                 if (navigator.clipboard) {
                     var originalWriteText = navigator.clipboard.writeText;
                     navigator.clipboard.writeText = function(text) {
@@ -418,7 +524,85 @@ object WebConfig {
                     };
                 }
 
-                // 4. Real-Time SPA Router & URL Synchronization yang sangat efisien
+                // 4. Smart Preconnector & Prefetcher Tautan SPA (Hover/Touch)
+                var preconnectedOrigins = {};
+                function preconnectUrl(href) {
+                    try {
+                        if (!href || href.startsWith('javascript:') || href.startsWith('#') || href.startsWith('blob:')) return;
+                        var urlObj = new URL(href, location.href);
+                        var origin = urlObj.origin;
+                        if (origin && origin !== location.origin && !preconnectedOrigins[origin]) {
+                            preconnectedOrigins[origin] = true;
+                            var linkDns = document.createElement('link');
+                            linkDns.rel = 'dns-prefetch';
+                            linkDns.href = origin;
+                            var linkConn = document.createElement('link');
+                            linkConn.rel = 'preconnect';
+                            linkConn.href = origin;
+                            var head = document.head || document.documentElement;
+                            head.appendChild(linkDns);
+                            head.appendChild(linkConn);
+                        }
+                    } catch(e) {}
+                }
+
+                document.addEventListener('touchstart', function(e) {
+                    var target = e.target;
+                    while (target && target.tagName !== 'A') {
+                        target = target.parentElement;
+                    }
+                    if (target && target.href) {
+                        preconnectUrl(target.href);
+                    }
+                }, { passive: true });
+
+                document.addEventListener('mouseover', function(e) {
+                    var target = e.target;
+                    while (target && target.tagName !== 'A') {
+                        target = target.parentElement;
+                    }
+                    if (target && target.href) {
+                        preconnectUrl(target.href);
+                    }
+                }, { passive: true });
+
+                // 5. Automatic Lazy Loading & Async Decoding untuk Gambar Dinamis SPA
+                function optimizeImages(container) {
+                    try {
+                        var root = container || document;
+                        var imgs = root.querySelectorAll('img:not([loading])');
+                        for (var i = 0; i < imgs.length; i++) {
+                            imgs[i].loading = 'lazy';
+                            imgs[i].decoding = 'async';
+                        }
+                    } catch(e) {}
+                }
+                optimizeImages();
+
+                // MutationObserver khusus node baru untuk auto-lazy load tanpa beban CPU
+                if (window.MutationObserver) {
+                    var imgObserver = new MutationObserver(function(mutations) {
+                        for (var i = 0; i < mutations.length; i++) {
+                            var added = mutations[i].addedNodes;
+                            for (var j = 0; j < added.length; j++) {
+                                var node = added[j];
+                                if (node.nodeType === 1) { // ELEMENT_NODE
+                                    if (node.tagName === 'IMG' && !node.getAttribute('loading')) {
+                                        node.loading = 'lazy';
+                                        node.decoding = 'async';
+                                    } else {
+                                        optimizeImages(node);
+                                    }
+                                }
+                            }
+                        }
+                    });
+                    if (document.body || document.documentElement) {
+                        imgObserver.observe(document.body || document.documentElement, { childList: true, subtree: true });
+                    }
+                }
+
+                // 6. Real-Time SPA Router & URL Synchronization & Frame Painting Flush
                 var lastReportedUrl = location.href;
                 var lastReportedTitle = document.title;
                 var syncTimeout = null;
@@ -430,6 +614,14 @@ object WebConfig {
                         if (curUrl && curUrl !== 'about:blank' && (curUrl !== lastReportedUrl || curTitle !== lastReportedTitle)) {
                             lastReportedUrl = curUrl;
                             lastReportedTitle = curTitle;
+
+                            // Flush frame painting pada siklus rute baru
+                            if (window.requestAnimationFrame) {
+                                window.requestAnimationFrame(function() {
+                                    optimizeImages();
+                                });
+                            }
+
                             if (window.TampermonkeyBridge && typeof window.TampermonkeyBridge.onSpaUrlChanged === 'function') {
                                 window.TampermonkeyBridge.onSpaUrlChanged(curUrl, curTitle);
                             }
@@ -442,7 +634,7 @@ object WebConfig {
 
                 function scheduleUrlCheck() {
                     if (syncTimeout) clearTimeout(syncTimeout);
-                    syncTimeout = setTimeout(reportUrlChange, 50);
+                    syncTimeout = setTimeout(reportUrlChange, 40);
                 }
 
                 function hookHistoryMethod(method) {
@@ -462,7 +654,7 @@ object WebConfig {
                 window.addEventListener('popstate', scheduleUrlCheck, true);
                 window.addEventListener('hashchange', scheduleUrlCheck, true);
                 
-                // YouTube, Next.js, Nuxt, Turbo, HTMX hooks
+                // YouTube, Next.js, Nuxt, Turbo, HTMX, React, Svelte, Vue hooks
                 window.addEventListener('yt-navigate-finish', scheduleUrlCheck, true);
                 window.addEventListener('turbo:load', scheduleUrlCheck, true);
                 window.addEventListener('turbo:render', scheduleUrlCheck, true);
@@ -480,7 +672,7 @@ object WebConfig {
                 // Polling santai setiap 2.5 detik
                 setInterval(reportUrlChange, 2500);
 
-                // 4. Sinkronisasi status media berkala
+                // 7. Sinkronisasi status media berkala
                 function checkMediaStatus() {
                     try {
                         var isPlaying = false;
@@ -500,7 +692,7 @@ object WebConfig {
                 setInterval(checkMediaStatus, 3000);
 
             } catch(err) {
-                console.error('[Chrotium] Angular & SPA optimization error:', err);
+                console.error('[Chrotium] SPA performance engine error:', err);
             }
         })();
     """.trimIndent()
@@ -743,7 +935,7 @@ object WebConfig {
                 `;
                 (document.head || document.documentElement).appendChild(style);
 
-                // 2. Optimize YouTube Player performance configuration if present
+                // 2. Optimize YouTube Player performance & background play configuration if present
                 if (window.yt && window.yt.config_) {
                     window.yt.config_.EXPERIMENT_FLAGS = window.yt.config_.EXPERIMENT_FLAGS || {};
                     window.yt.config_.EXPERIMENT_FLAGS.web_enable_ab_testing = false;
@@ -756,6 +948,14 @@ object WebConfig {
                     window.yt.config_.EXPERIMENT_FLAGS.html5_force_high_quality_formats = true;
                     window.yt.config_.EXPERIMENT_FLAGS.html5_enable_vpx_decoding = true;
                     window.yt.config_.EXPERIMENT_FLAGS.html5_enable_av1_decoding = true;
+
+                    // Force YouTube background playback flags
+                    window.yt.config_.EXPERIMENT_FLAGS.html5_pause_on_screen_lock = false;
+                    window.yt.config_.EXPERIMENT_FLAGS.html5_disable_background_pause = true;
+                    window.yt.config_.EXPERIMENT_FLAGS.web_background_play = true;
+                    window.yt.config_.EXPERIMENT_FLAGS.web_enable_background_audio = true;
+                    window.yt.config_.EXPERIMENT_FLAGS.web_background_playback = true;
+                    window.yt.config_.EXPERIMENT_FLAGS.html5_stop_background_playback = false;
                 }
 
                 // Active video buffer preloading optimization
