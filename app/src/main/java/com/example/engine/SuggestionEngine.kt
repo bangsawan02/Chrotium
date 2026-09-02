@@ -5,18 +5,12 @@ import com.example.data.model.SuggestionItem
 import com.example.data.model.SuggestionType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import org.json.JSONArray
+import java.net.HttpURLConnection
+import java.net.URL
 import java.net.URLEncoder
-import java.util.concurrent.TimeUnit
 
 class SuggestionEngine(private val database: AppDatabase) {
-
-    private val okHttpClient = OkHttpClient.Builder()
-        .connectTimeout(2, TimeUnit.SECONDS)
-        .readTimeout(2, TimeUnit.SECONDS)
-        .build()
 
     private val commonDomains = listOf(
         "google.com", "youtube.com", "github.com", "wikipedia.org", "reddit.com",
@@ -115,42 +109,19 @@ class SuggestionEngine(private val database: AppDatabase) {
             return list
         }
 
-        // 1. Coba DuckDuckGo Autocomplete API via OkHttp
+        // 1. Coba DuckDuckGo Autocomplete API via HttpURLConnection (Native Android/Java API)
         try {
-            val request = Request.Builder()
-                .url("https://duckduckgo.com/ac/?q=$encodedQuery&type=list")
-                .header("User-Agent", "Mozilla/5.0")
-                .build()
+            val url = URL("https://duckduckgo.com/ac/?q=$encodedQuery&type=list")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.connectTimeout = 2000
+            connection.readTimeout = 2000
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0")
+            connection.requestMethod = "GET"
 
-            okHttpClient.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    val responseText = response.body?.string() ?: ""
-                    if (responseText.startsWith("[")) {
-                        val jsonArray = JSONArray(responseText)
-                        if (jsonArray.length() > 1) {
-                            val suggestionsArray = jsonArray.getJSONArray(1)
-                            for (i in 0 until suggestionsArray.length().coerceAtMost(6)) {
-                                list.add(suggestionsArray.getString(i))
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            // Lanjutkan ke fallback
-        }
-
-        if (list.isNotEmpty()) return list
-
-        // 2. Fallback ke Google Suggestions jika DuckDuckGo kosong via OkHttp
-        try {
-            val request = Request.Builder()
-                .url("https://suggestqueries.google.com/complete/search?client=chrome&q=$encodedQuery")
-                .build()
-
-            okHttpClient.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    val responseText = response.body?.string() ?: ""
+            val responseCode = connection.responseCode
+            if (responseCode == 200) {
+                val responseText = connection.inputStream.bufferedReader().use { it.readText() }
+                if (responseText.startsWith("[")) {
                     val jsonArray = JSONArray(responseText)
                     if (jsonArray.length() > 1) {
                         val suggestionsArray = jsonArray.getJSONArray(1)
@@ -160,6 +131,34 @@ class SuggestionEngine(private val database: AppDatabase) {
                     }
                 }
             }
+            connection.disconnect()
+        } catch (e: Exception) {
+            // Lanjutkan ke fallback
+        }
+
+        if (list.isNotEmpty()) return list
+
+        // 2. Fallback ke Google Suggestions jika DuckDuckGo kosong via HttpURLConnection (Native Android/Java API)
+        try {
+            val url = URL("https://suggestqueries.google.com/complete/search?client=chrome&q=$encodedQuery")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.connectTimeout = 2000
+            connection.readTimeout = 2000
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0")
+            connection.requestMethod = "GET"
+
+            val responseCode = connection.responseCode
+            if (responseCode == 200) {
+                val responseText = connection.inputStream.bufferedReader().use { it.readText() }
+                val jsonArray = JSONArray(responseText)
+                if (jsonArray.length() > 1) {
+                    val suggestionsArray = jsonArray.getJSONArray(1)
+                    for (i in 0 until suggestionsArray.length().coerceAtMost(6)) {
+                        list.add(suggestionsArray.getString(i))
+                    }
+                }
+            }
+            connection.disconnect()
         } catch (e: Exception) {
             // Abaikan kesalahan fallback
         }
@@ -168,22 +167,9 @@ class SuggestionEngine(private val database: AppDatabase) {
     }
 
     /**
-     * Closes the OkHttpClient connection pool and executor service to prevent memory and socket leaks.
+     * Closes current cache/connections (No-op since using native HttpURLConnection)
      */
-    fun clearCache() {
-        try {
-            okHttpClient.connectionPool.evictAll()
-        } catch (e: Exception) {
-            // safe ignore
-        }
-    }
+    fun clearCache() {}
 
-    fun close() {
-        try {
-            okHttpClient.dispatcher.executorService.shutdown()
-            okHttpClient.connectionPool.evictAll()
-        } catch (e: Exception) {
-            // safe ignore
-        }
-    }
+    fun close() {}
 }

@@ -155,12 +155,13 @@ dependencies {
   implementation(libs.androidx.room.runtime)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
-  implementation(libs.coil.compose)
+  // Unused external dependencies commented out to optimize APK size and prioritize native APIs
+  // implementation(libs.coil.compose)
   implementation(libs.androidx.datastore.preferences)
   implementation(libs.kotlinx.serialization.json)
-  implementation(libs.okhttp)
+  // implementation(libs.okhttp)
   implementation(libs.androidx.work.runtime.ktx)
-  implementation(libs.quickjs.android)
+  // implementation(libs.quickjs.android)
   implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
   implementation("androidx.webkit:webkit:1.12.1")
 

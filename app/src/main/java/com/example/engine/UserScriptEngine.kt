@@ -288,10 +288,6 @@ object UserScriptEngine {
         val injectedNames = mutableListOf<String>()
 
         for (script in matchingScripts) {
-            // Pre-validate JS syntax using QuickJS engine
-            if (!QuickJsScriptEngine.validateJsSyntax(script.code)) {
-                android.util.Log.w("UserScriptEngine", "Syntax warning for script: ${script.name}")
-            }
             val executable = buildExecutableScript(script, tabId)
             webView.evaluateJavascript(executable, null)
             injectedNames.add(script.name)

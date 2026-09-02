@@ -53,7 +53,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.SubcomposeAsyncImage
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.example.data.model.Bookmark
 import com.example.data.model.HistoryItem
 import com.example.data.model.UserScript
@@ -164,19 +169,10 @@ fun HomeDashboard(
                                 .background(parsedColor.copy(alpha = 0.2f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            SubcomposeAsyncImage(
-                                model = faviconUrl,
-                                contentDescription = shortcut.title,
+                            NativeAsyncImage(
+                                url = faviconUrl,
                                 modifier = Modifier.size(24.dp).clip(CircleShape),
-                                error = {
-                                    Text(
-                                        text = shortcut.initial,
-                                        color = parsedColor,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Black
-                                    )
-                                },
-                                loading = {
+                                fallback = {
                                     Text(
                                         text = shortcut.initial,
                                         color = parsedColor,
@@ -484,3 +480,55 @@ fun HomeDashboard(
         )
     }
 }
+
+/**
+ * Native, lightweight asynchronous image loader with zero external library dependencies.
+ * Uses native Java HttpURLConnection and BitmapFactory to decode image streams.
+ */
+@Composable
+fun NativeAsyncImage(
+    url: String,
+    modifier: Modifier = Modifier,
+    fallback: @Composable () -> Unit
+) {
+    var imageBitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
+
+    LaunchedEffect(url) {
+        val bitmap = withContext(Dispatchers.IO) {
+            var connection: java.net.HttpURLConnection? = null
+            try {
+                val urlObj = java.net.URL(url)
+                connection = urlObj.openConnection() as java.net.HttpURLConnection
+                connection.connectTimeout = 3000
+                connection.readTimeout = 3000
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0")
+                connection.connect()
+                if (connection.responseCode == 200) {
+                    val stream = connection.inputStream
+                    android.graphics.BitmapFactory.decodeStream(stream)
+                } else {
+                    null
+                }
+            } catch (e: Exception) {
+                null
+            } finally {
+                try {
+                    connection?.disconnect()
+                } catch (_: Exception) {}
+            }
+        }
+        imageBitmap = bitmap?.asImageBitmap()
+    }
+
+    val bitmap = imageBitmap
+    if (bitmap != null) {
+        Image(
+            bitmap = bitmap,
+            contentDescription = null,
+            modifier = modifier
+        )
+    } else {
+        fallback()
+    }
+}
+
