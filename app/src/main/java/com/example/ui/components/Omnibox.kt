@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -49,6 +50,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
@@ -68,6 +70,7 @@ fun Omnibox(
     activeScriptsCount: Int,
     blockedAdsCount: Int = 0,
     isAdBlockEnabled: Boolean = true,
+    favicon: android.graphics.Bitmap? = null,
     onUrlSubmit: (String) -> Unit,
     onUrlChange: (String) -> Unit,
     onRefresh: () -> Unit,
@@ -127,7 +130,7 @@ fun Omnibox(
                         .padding(horizontal = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Security / Protocol Icon
+                    // Security / Protocol / Favicon Icon
                     Box(
                         modifier = Modifier
                             .size(24.dp)
@@ -135,12 +138,22 @@ fun Omnibox(
                             .clickable(onClick = onSecurityIconClick),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = if (isHttps) Icons.Default.Lock else Icons.Default.Public,
-                            contentDescription = if (isHttps) "Koneksi Aman SSL" else "Web",
-                            tint = if (isHttps) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(16.dp)
-                        )
+                        if (favicon != null) {
+                            Image(
+                                bitmap = favicon.asImageBitmap(),
+                                contentDescription = "Site Icon",
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .clip(RoundedCornerShape(3.dp))
+                            )
+                        } else {
+                            Icon(
+                                imageVector = if (isHttps) Icons.Default.Lock else Icons.Default.Public,
+                                contentDescription = if (isHttps) "Koneksi Aman SSL" else "Web",
+                                tint = if (isHttps) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.width(6.dp))

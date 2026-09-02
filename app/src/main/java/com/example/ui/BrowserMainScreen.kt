@@ -138,6 +138,7 @@ fun BrowserMainScreen(
                             activeScriptsCount = activeTab?.activeScriptsCount ?: 0,
                             blockedAdsCount = activeTab?.blockedRequestsCount ?: 0,
                             isAdBlockEnabled = adBlockStats.isEnabled,
+                            favicon = activeTab?.favicon,
                             onUrlSubmit = { viewModel.openUrl(it) },
                             onUrlChange = { viewModel.setOmniboxText(it) },
                             onRefresh = {
@@ -232,6 +233,7 @@ fun BrowserMainScreen(
                             onPageStarted = { viewModel.onPageStarted(it, tab.id) },
                             onPageFinished = { url, title -> viewModel.onPageFinished(url, title, tab.id) },
                             onProgressChanged = { viewModel.onProgressChanged(it, tab.id) },
+                            onFaviconReceived = { viewModel.onFaviconReceived(it, tab.id) },
                             onNavigationStateChanged = { back, forward -> viewModel.onNavigationStateChanged(back, forward, tab.id) },
                             onScriptsExecuted = { viewModel.onScriptsExecuted(it, tab.id) },
                             onScriptInjected = { script -> viewModel.onScriptInjected(script.id) },

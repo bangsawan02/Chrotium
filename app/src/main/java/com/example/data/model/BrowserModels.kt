@@ -33,7 +33,8 @@ data class TabItem(
     val isPlayingMedia: Boolean = false,
     val blockedRequestsCount: Int = 0,
     val activeScriptsCount: Int = 0,
-    val activeScriptNames: List<String> = emptyList()
+    val activeScriptNames: List<String> = emptyList(),
+    val favicon: android.graphics.Bitmap? = null
 )
 
 data class TabSession(

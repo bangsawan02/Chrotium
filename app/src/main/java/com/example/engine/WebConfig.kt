@@ -1400,7 +1400,7 @@ object WebConfig {
         settings.useWideViewPort = true
         settings.loadWithOverviewMode = true
         settings.setSupportZoom(true)
-        settings.builtInZoomControls = false
+        settings.builtInZoomControls = true
         settings.displayZoomControls = false
         settings.mediaPlaybackRequiresUserGesture = false
         settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE

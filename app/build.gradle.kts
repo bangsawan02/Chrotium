@@ -62,8 +62,10 @@ android {
       signingConfig = signingConfigs.getByName("release")
     }
     debug {
-      isMinifyEnabled = false
-      isShrinkResources = false
+      isDebuggable = false
+      isMinifyEnabled = true
+      isShrinkResources = true
+      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("debugConfig")
     }
   }
@@ -162,8 +164,6 @@ dependencies {
   // implementation(libs.okhttp)
   // implementation(libs.androidx.work.runtime.ktx)
   // implementation(libs.quickjs.android)
-  implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
-  implementation("androidx.webkit:webkit:1.12.1")
 
   // Unused test dependencies commented out for build speed optimization
   // testImplementation(libs.androidx.compose.ui.test.junit4)

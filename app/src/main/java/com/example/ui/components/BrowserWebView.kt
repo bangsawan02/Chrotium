@@ -16,10 +16,8 @@ import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.webkit.WebViewCompat
-import androidx.webkit.WebViewFeature
-import androidx.webkit.WebViewRenderProcess
-import androidx.webkit.WebViewRenderProcessClient as AndroidXWebViewRenderProcessClient
+import android.webkit.WebViewRenderProcess
+import android.webkit.WebViewRenderProcessClient
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -57,7 +55,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.toArgb
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -187,41 +184,9 @@ class ChrotiumInterface(
 }
 
 /**
- * SwipeRefreshLayout dengan touch-slop terkalibrasi agar tidak terlalu sensitif saat scroll biasa.
  * Hanya bereaksi ketika pengguna benar-benar berada di paling atas halaman dan menarik ke bawah
  * secara vertikal dengan sengaja.
  */
-class RobustSwipeRefreshLayout(context: Context) : SwipeRefreshLayout(context) {
-    // Memperbesar touch slop secara signifikan (x4) agar jauh lebih tidak sensitif
-    // sehingga pengguna web modern (seperti ai.studio) dapat scroll ke atas tanpa sengaja me-refresh.
-    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop * 4
-    private var initialDownX = 0f
-    private var initialDownY = 0f
-
-    override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
-        when (ev.action) {
-            MotionEvent.ACTION_DOWN -> {
-                initialDownX = ev.x
-                initialDownY = ev.y
-            }
-            MotionEvent.ACTION_MOVE -> {
-                val dx = Math.abs(ev.x - initialDownX)
-                val dy = ev.y - initialDownY
-
-                // Jangan aktifkan jika gerakan horizontal atau scroll ke atas
-                if (dy <= 0 || dx > dy * 0.5f) {
-                    return false
-                }
-
-                // Harus melewati batas tarikan vertikal yang disengaja yang jauh lebih panjang
-                if (dy < touchSlop) {
-                    return false
-                }
-            }
-        }
-        return super.onInterceptTouchEvent(ev)
-    }
-}
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -233,6 +198,7 @@ fun BrowserWebView(
     onPageStarted: (String) -> Unit,
     onPageFinished: (String, String?) -> Unit,
     onProgressChanged: (Int) -> Unit,
+    onFaviconReceived: (Bitmap?) -> Unit = {},
     onNavigationStateChanged: (Boolean, Boolean) -> Unit,
     onScriptsExecuted: (List<String>) -> Unit,
     onScriptInjected: (UserScript) -> Unit,
@@ -389,10 +355,8 @@ fun BrowserWebView(
 
             // Multi-Process Renderer Process Client to isolate rendering process and handle OOM crashes gracefully
             try {
-                if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_VIEW_RENDERER_CLIENT_BASIC_USAGE)) {
-                    WebViewCompat.setWebViewRenderProcessClient(
-                        this,
-                        object : AndroidXWebViewRenderProcessClient() {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                    this.webViewRenderProcessClient = object : WebViewRenderProcessClient() {
                             override fun onRenderProcessUnresponsive(
                                 view: WebView,
                                 renderer: WebViewRenderProcess?
@@ -416,7 +380,6 @@ fun BrowserWebView(
                                 )
                             }
                         }
-                    )
                 } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                     webViewRenderProcessClient = object : android.webkit.WebViewRenderProcessClient() {
                         override fun onRenderProcessUnresponsive(
@@ -578,6 +541,9 @@ fun BrowserWebView(
                     view?.settings?.userAgentString = com.example.engine.WebConfig.getCustomUserAgent(safeUrl, tab.isDesktopMode)
 
                     onPageStarted(safeUrl)
+                    if (favicon != null) {
+                        onFaviconReceived(favicon)
+                    }
 
                     view?.let { wv ->
                         injectPageEnhancements(wv, safeUrl, isAuth, tab.isH264ifyEnabled, tab.isDesktopMode, adBlockEngine)
@@ -607,7 +573,6 @@ fun BrowserWebView(
                     val isAuth = com.example.engine.WebConfig.isGoogleAuthUrl(safeUrl)
                     
                     view?.post {
-                        (view.parent as? SwipeRefreshLayout)?.isRefreshing = false
                     }
 
                     onPageFinished(safeUrl, view?.title)
@@ -768,9 +733,19 @@ fun BrowserWebView(
                     onProgressChanged(newProgress)
                     if (newProgress >= 100) {
                         view?.post {
-                            (view.parent as? SwipeRefreshLayout)?.isRefreshing = false
                         }
                     }
+                }
+
+                override fun onReceivedIcon(view: WebView?, icon: Bitmap?) {
+                    super.onReceivedIcon(view, icon)
+                    if (icon != null) {
+                        onFaviconReceived(icon)
+                    }
+                }
+
+                override fun onReceivedTouchIconUrl(view: WebView?, url: String?, precomposed: Boolean) {
+                    super.onReceivedTouchIconUrl(view, url, precomposed)
                 }
 
                 override fun onReceivedTitle(view: WebView?, title: String?) {
@@ -970,17 +945,14 @@ fun BrowserWebView(
 
                         // Multi-Process Renderer Process Client for popup WebView
                         try {
-                            if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_VIEW_RENDERER_CLIENT_BASIC_USAGE)) {
-                                WebViewCompat.setWebViewRenderProcessClient(
-                                    this,
-                                    object : AndroidXWebViewRenderProcessClient() {
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                                this.webViewRenderProcessClient = object : WebViewRenderProcessClient() {
                                         override fun onRenderProcessUnresponsive(view: WebView, renderer: WebViewRenderProcess?) {
                                             android.util.Log.w("BrowserWebView", "Popup WebView renderer unresponsive. Terminating renderer to keep UI fluid.")
                                             renderer?.terminate()
                                         }
                                         override fun onRenderProcessResponsive(view: WebView, renderer: WebViewRenderProcess?) {}
                                     }
-                                )
                             }
                         } catch (e: Exception) {
                             android.util.Log.w("BrowserWebView", "Failed to set WebViewRenderProcessClient on popup", e)
@@ -1202,43 +1174,6 @@ fun BrowserWebView(
         }
     }
 
-    val primaryColor = MaterialTheme.colorScheme.primary.toArgb()
-    val backgroundColor = MaterialTheme.colorScheme.surface.toArgb()
-
-    val swipeRefreshLayout = remember(tab.id) {
-        RobustSwipeRefreshLayout(context).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            isFocusable = false
-            isFocusableInTouchMode = false
-            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
-            setColorSchemeColors(primaryColor)
-            setProgressBackgroundColorSchemeColor(backgroundColor)
-            
-            val density = context.resources.displayMetrics.density
-            setDistanceToTriggerSync((160 * density).toInt())
-            setSlingshotDistance((190 * density).toInt())
-            
-            addView(webView)
-            
-            setOnRefreshListener {
-                webView.reload()
-            }
-
-            // Mencegah tarik-turun (refresh) jika sedang melakukan scroll di dalam halaman web
-            setOnChildScrollUpCallback { _, _ ->
-                webView.canScrollVertically(-1) || webView.scrollY > 0
-            }
-        }
-    }
-
-    LaunchedEffect(tab.url, tab.isPullToRefreshEnabled) {
-        val isHome = tab.url == "about:blank" || tab.url.isBlank()
-        val isSPA = tab.url.contains("aistudio.google.com") || tab.url.contains("youtube.com")
-        swipeRefreshLayout.isEnabled = tab.isPullToRefreshEnabled && !isHome && !isSPA
-    }
 
     // Tab Memory & CPU Management: Freeze background tabs when not playing media, unfreeze on focus
     LaunchedEffect(isVisible, webView.isMediaPlaying, webView.isBackgroundPlayEnabled) {
@@ -1276,7 +1211,7 @@ fun BrowserWebView(
     DisposableEffect(tab.id) {
         onDispose {
             try {
-                swipeRefreshLayout.removeView(webView)
+                (webView.parent as? ViewGroup)?.removeView(webView)
                 webView.apply {
                     stopLoading()
                     clearHistory()
@@ -1316,7 +1251,7 @@ fun BrowserWebView(
         modifier = modifier.fillMaxSize()
     ) {
         AndroidView(
-            factory = { swipeRefreshLayout },
+            factory = { webView },
             update = { view ->
                 view.visibility = if (isVisible) android.view.View.VISIBLE else android.view.View.GONE
             },

@@ -300,7 +300,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun onPageStarted(url: String, tabId: String? = null) {
-        updateTabById(tabId) { it.copy(url = url, isLoading = true, progress = 15, blockedRequestsCount = 0) }
+        updateTabById(tabId) { it.copy(url = url, isLoading = true, progress = 15, blockedRequestsCount = 0, favicon = null) }
         if (tabId == null || tabId == _uiState.value.activeTabId) {
             _uiState.value = _uiState.value.copy(omniboxText = if (url == "about:blank") "" else url)
             checkBookmarkStatus(url)
@@ -369,6 +369,11 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun onProgressChanged(progress: Int, tabId: String? = null) {
         updateTabById(tabId) { it.copy(progress = progress, isLoading = progress < 100) }
+    }
+
+    fun onFaviconReceived(icon: android.graphics.Bitmap?, tabId: String? = null) {
+        if (icon == null) return
+        updateTabById(tabId) { it.copy(favicon = icon) }
     }
 
     fun onNavigationStateChanged(canGoBack: Boolean, canGoForward: Boolean, tabId: String? = null) {
